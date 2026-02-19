@@ -1,0 +1,21 @@
+{
+  "name": "ble-breath",
+  "version": "1.0.0",
+  "description": "Anonymous BLE mood resonance — ephemeral keys, breath-signature matching, no IDs, no server",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dual": "NOBLE_HCI_DEVICE_ID=0 BLENO_HCI_DEVICE_ID=1 node index.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "@abandonware/bleno": "^0.6.1-7",
+    "@abandonware/noble": "^1.9.2-23"
+  },
+  "os": ["linux", "darwin"],
+  "keywords": [],
+  "license": "UNLICENSED"
+}
