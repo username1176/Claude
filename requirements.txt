@@ -1,0 +1,16 @@
+# breath_detector.py — Python dependencies
+#
+# Core (always needed)
+numpy>=1.23
+
+# Signal processing — strongly recommended; pure-FIR fallback used if absent
+scipy>=1.9
+
+# Microphone capture (Linux/macOS/Windows, Android via Buildozer)
+sounddevice>=0.4
+
+# --- Raspberry Pi (I2C IMU) ---
+# smbus2>=0.4          # uncomment for RPi: pip install smbus2
+
+# --- Android (via Kivy / Buildozer) ---
+# plyer>=2.1           # uncomment for Android: pip install plyer
