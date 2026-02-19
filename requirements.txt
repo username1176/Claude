@@ -1,4 +1,4 @@
-# breath_detector.py — Python dependencies
+# breath_detector.py + mood_net.py — Python dependencies
 #
 # Core (always needed)
 numpy>=1.23
@@ -8,6 +8,16 @@ scipy>=1.9
 
 # Microphone capture (Linux/macOS/Windows, Android via Buildozer)
 sounddevice>=0.4
+
+# Neural network — mood_net.py
+# CPU-only wheel is fine (and much smaller); install one of:
+#   pip install torch                            # default (may include CUDA)
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   RPi arm64: pip install torch (PyPI has ARM wheels from 2.0+)
+torch>=2.0
+
+# --- Optional: BLE heart-rate monitor (Polar H10, Wahoo Tickr, etc.) ---
+# bleak>=0.21          # uncomment: pip install bleak
 
 # --- Raspberry Pi (I2C IMU) ---
 # smbus2>=0.4          # uncomment for RPi: pip install smbus2
