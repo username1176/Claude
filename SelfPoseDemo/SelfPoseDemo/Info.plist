@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+    <!-- ============================================================
+         PRIVACY USAGE DESCRIPTIONS
+         ============================================================
+         These strings are displayed in Apple's system permission
+         dialogs.  They must be honest, specific, and non-coercive
+         per Apple's App Store Review Guidelines §5.1.1 and the
+         Human Interface Guidelines (Privacy).
+
+         GDPR / CCPA note:
+           The camera feed is processed on-device only (AVFoundation +
+           Vision + Core ML).  No pixel data is stored or transmitted.
+           These descriptions accurately reflect that minimal processing.
+         ============================================================ -->
+
+    <!-- Shown the FIRST time the OS asks the user for camera access. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Self-Pose Demo uses your front camera to analyse your own body pose in real time for personal sports feedback. All processing is on-device only. No video, images, or pose data are stored, shared, or transmitted anywhere.</string>
+
+    <!-- ============================================================
+         APP METADATA
+         ============================================================ -->
+
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Self-Pose Demo</string>
+
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- ============================================================
+         SCENE MANIFEST (UIKit multi-window / SceneDelegate)
+         ============================================================ -->
+
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+
+    <!-- ============================================================
+         REQUIRED DEVICE CAPABILITIES
+         Prevents installation on hardware that cannot run the app.
+         ============================================================ -->
+
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <!-- ARKit world-tracking or face-tracking requires A9 chip or later -->
+        <string>arkit</string>
+        <!-- Front-facing camera is required for pose detection -->
+        <string>front-facing-camera</string>
+    </array>
+
+    <!-- ============================================================
+         SUPPORTED ORIENTATIONS
+         Portrait only — landscape is not meaningful for self-pose feedback.
+         ============================================================ -->
+
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <!-- ============================================================
+         APP TRANSPORT SECURITY
+         No network connections are made by this app.
+         Leaving ATS at its default strict settings reinforces the
+         on-device-only data policy.
+         ============================================================ -->
+
+    <!-- ATS is intentionally left at its secure default (no exceptions).
+         Self-Pose Demo makes no network requests. -->
+
+</dict>
+</plist>
