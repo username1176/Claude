@@ -1,5 +1,39 @@
 'use strict';
 
+const { createHash, randomBytes } = require('crypto');
+
+/**
+ * One-way breath commitment — SHA-256(salt ‖ rate_byte ‖ depth_byte).
+ *
+ * Used to let two parties confirm they share a similar breath pattern without
+ * ever transmitting the raw values.  The 16-byte random salt is generated
+ * once per session (never persisted) and discarded when the process exits.
+ *
+ * Properties:
+ *   • Pre-image resistant: observing the hash reveals nothing about rate/depth.
+ *   • Session-scoped: a new salt is generated on every process start, so hashes
+ *     from previous sessions cannot be correlated.
+ *   • Fuzzy: the quantisation to uint8 (±0.4% for rate, ±0.4% for depth) means
+ *     hashes are only equal when vectors round to the same byte — the ±5%
+ *     threshold check in breathMatches() is the primary gate; this commitment
+ *     is an optional secondary binding in higher-trust contexts.
+ *
+ * @param {{ rate: number, depth: number }} vec
+ * @param {Buffer} sessionSalt   16-byte random salt (see SESSION_SALT below)
+ * @returns {string}  hex-encoded SHA-256 digest
+ */
+function breathHash(vec, sessionSalt) {
+  const rateByte  = Math.max(0, Math.min(255, Math.round(vec.rate  * 10)));
+  const depthByte = Math.max(0, Math.min(255, Math.round(vec.depth * 255)));
+  return createHash('sha256')
+    .update(sessionSalt)
+    .update(Buffer.from([rateByte, depthByte]))
+    .digest('hex');
+}
+
+/** Per-process session salt — never written to disk. */
+const SESSION_SALT = randomBytes(16);
+
 /**
  * Breath-signature matching.
  *
@@ -48,4 +82,4 @@ function resonanceScore(local, remote) {
   return Math.max(0, 1 - maxDiff / DEFAULT_THRESHOLD);
 }
 
-module.exports = { breathMatches, resonanceScore };
+module.exports = { breathMatches, resonanceScore, breathHash, SESSION_SALT };

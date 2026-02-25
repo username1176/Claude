@@ -56,10 +56,29 @@ function parseArgs() {
     hapticCmd:  get('--haptic-cmd'),
     dual:       has('--dual'),
     sim:        has('--sim'),
+    wipe:       has('--wipe'),
   };
 }
 
 const cfg = parseArgs();
+
+// ── kill switch ───────────────────────────────────────────────────────────────
+// node index.js --wipe
+//
+// ble-breath holds NO persistent state — every key is derived fresh from
+// floor(Date.now()/10000) and every session salt is randomBytes(16).
+// Restarting the process is sufficient to "forget" any pulse history.
+// --wipe makes this contract explicit and machine-verifiable.
+if (cfg.wipe) {
+  // 1. Overwrite the in-process session salt (belt-and-suspenders).
+  const { SESSION_SALT } = require('./src/breath');
+  require('crypto').randomFillSync(SESSION_SALT);   // zero-knowledge overwrite
+
+  // 2. Nothing else to clear — no files, no sockets, no DB.
+  //    Print to stdout so shell scripts can confirm the wipe completed.
+  process.stdout.write('pulse:wiped\n');
+  process.exit(0);
+}
 
 if (cfg.hapticCmd) process.env.HAPTIC_CMD = cfg.hapticCmd;
 if (cfg.dual)      process.env.DUAL_ADAPTER = '1';
