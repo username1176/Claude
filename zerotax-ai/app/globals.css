@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* ── Tailwind v4 theme tokens ─────────────────────────────── */
+@theme {
+  --color-background: hsl(222.2, 84%, 4.9%);
+  --color-foreground: hsl(210, 40%, 98%);
+  --color-card: hsl(222.2, 84%, 4.9%);
+  --color-card-foreground: hsl(210, 40%, 98%);
+  --color-primary: hsl(160, 84%, 39%);
+  --color-primary-foreground: hsl(144.9, 80.4%, 10%);
+  --color-secondary: hsl(217.2, 32.6%, 17.5%);
+  --color-secondary-foreground: hsl(210, 40%, 98%);
+  --color-muted: hsl(217.2, 32.6%, 17.5%);
+  --color-muted-foreground: hsl(215, 20.2%, 65.1%);
+  --color-accent: hsl(217.2, 32.6%, 17.5%);
+  --color-accent-foreground: hsl(210, 40%, 98%);
+  --color-destructive: hsl(0, 62.8%, 30.6%);
+  --color-destructive-foreground: hsl(210, 40%, 98%);
+  --color-border: hsl(217.2, 32.6%, 17.5%);
+  --color-input: hsl(217.2, 32.6%, 17.5%);
+  --color-ring: hsl(160, 84%, 39%);
+  --radius: 0.75rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/* ── Base resets ───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  border-color: hsl(217.2, 32.6%, 17.5%);
+}
+
+body {
+  background-color: hsl(222.2, 84%, 4.9%);
+  color: hsl(210, 40%, 98%);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(217.2, 32.6%, 12%);
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(217.2, 32.6%, 30%);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(160, 84%, 39%);
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #10b981, #34d399, #6ee7b7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Animated gradient border */
+.gradient-border {
+  position: relative;
+  background:
+    linear-gradient(hsl(222.2, 84%, 4.9%), hsl(222.2, 84%, 4.9%)) padding-box,
+    linear-gradient(135deg, #10b981, #6366f1, #10b981) border-box;
+  border: 1px solid transparent;
+}
+
+/* Glow effects */
+.glow-emerald {
+  box-shadow:
+    0 0 30px rgba(16, 185, 129, 0.25),
+    0 0 60px rgba(16, 185, 129, 0.1);
+}
+
+/* Dot grid background */
+.dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Shimmer loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
+.animate-slide-up { animation: slideUp 0.4s ease-out; }
