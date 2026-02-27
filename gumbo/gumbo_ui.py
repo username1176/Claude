@@ -8,9 +8,12 @@ Features:
   - Sidebar: New Project / Load Project (file upload) / Save Project (download)
   - Dynamic sequence tabs with drag-style prompt text areas
   - Dynamic sub-slots (action items) under each tab
-  - Per-task LLM selector + tool checkboxes
-  - Workflow execution with live progress + integrated result panel
-  - Full session-state persistence across reruns
+  - Per-task LLM dropdown (Claude-3, GPT-4, Grok, Custom) + custom model input
+  - Per-task multi-select tools (Web Search, Code Execution, Browse Page, etc.)
+  - "Run Tab" button per tab — executes the sequential multi-tool pipeline
+  - "Run All Tabs" in sidebar — full project execution + integration
+  - Output display below each item after running
+  - Full session-state persistence across Streamlit reruns
 """
 
 from __future__ import annotations
@@ -34,16 +37,16 @@ from gumbo.storage import delete_project, list_projects, load_project, save_proj
 
 st.set_page_config(page_title="Gumbo", page_icon="\U0001f372", layout="wide")
 
-# ── Custom CSS for a cleaner look ────────────────────────────────────
+# ── Custom CSS ───────────────────────────────────────────────────────
 
 st.markdown(
     """
     <style>
-    /* tighten spacing inside subtask cards */
+    /* expander label weight */
     div[data-testid="stExpander"] details summary p {
         font-weight: 600;
     }
-    /* pill badge for tab position */
+    /* pill badge for sequence position */
     .tab-badge {
         display: inline-block;
         background: #4A90D9;
@@ -53,13 +56,28 @@ st.markdown(
         font-size: 0.75rem;
         margin-right: 6px;
     }
-    /* subtle card wrapper for subtasks */
-    .subtask-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 8px;
-        background: #fafafa;
+    /* run-status indicator */
+    .run-ok  { color: #28a745; font-weight: 600; }
+    .run-err { color: #dc3545; font-weight: 600; }
+    /* output block styling */
+    .output-block {
+        background: #f0f2f6;
+        border-left: 4px solid #4A90D9;
+        padding: 10px 14px;
+        border-radius: 4px;
+        margin: 6px 0 12px 0;
+        font-family: monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+    }
+    .tool-step {
+        background: #e8f4fd;
+        border-left: 3px solid #0ea5e9;
+        padding: 6px 10px;
+        border-radius: 3px;
+        margin: 4px 0;
+        font-family: monospace;
+        font-size: 0.82rem;
     }
     </style>
     """,
@@ -92,6 +110,99 @@ def _set_project(proj: Project) -> None:
 
 def _flash(msg: str) -> None:
     st.session_state.status_msg = msg
+
+
+def _engine() -> WorkflowEngine:
+    return st.session_state.engine
+
+
+# ── LLM selector helper (handles "Custom" with text input) ───────────
+
+
+def _llm_selector(
+    current_llm: str,
+    key_prefix: str,
+    label: str = "LLM",
+) -> str:
+    """Render an LLM dropdown.  When 'Custom' is chosen, show a text input.
+
+    Returns the resolved LLM string (either a preset name or the custom value).
+    """
+    # Determine dropdown index
+    if current_llm in AVAILABLE_LLMS:
+        idx = AVAILABLE_LLMS.index(current_llm)
+    else:
+        # Previously-entered custom value — show Custom selected
+        idx = AVAILABLE_LLMS.index("Custom")
+
+    chosen = st.selectbox(
+        label,
+        AVAILABLE_LLMS,
+        index=idx,
+        key=f"{key_prefix}_llm",
+    )
+
+    if chosen == "Custom":
+        # Preserve a previous custom value as the default
+        default_custom = current_llm if current_llm not in AVAILABLE_LLMS else ""
+        custom_val = st.text_input(
+            "Custom model name",
+            value=default_custom,
+            key=f"{key_prefix}_llm_custom",
+            placeholder="e.g. mistral-large, llama-3.1-70b...",
+        )
+        return custom_val if custom_val else "Custom"
+
+    return chosen
+
+
+# ── Tool multi-select helper ─────────────────────────────────────────
+
+
+def _tool_selector(
+    current_tools: list[str],
+    key_prefix: str,
+    label: str = "Tools (run in sequence)",
+) -> list[str]:
+    """Render a multi-select for tools.  Filters out 'None' from the result."""
+    # Ensure defaults are valid options
+    valid_defaults = [t for t in current_tools if t in AVAILABLE_TOOLS]
+
+    selected = st.multiselect(
+        label,
+        AVAILABLE_TOOLS,
+        default=valid_defaults,
+        key=f"{key_prefix}_tools",
+        help="Tools execute in sequence: output of one feeds into the next.",
+    )
+
+    # If user explicitly picks "None" alongside others, only keep "None"
+    if "None" in selected and len(selected) > 1:
+        return ["None"]
+    return selected
+
+
+# ── Output renderer ──────────────────────────────────────────────────
+
+
+def _render_output(output: str | None, key_prefix: str) -> None:
+    """Display the output block for a completed task."""
+    if not output:
+        return
+
+    st.markdown(
+        f'<div class="output-block">{_escape_html(output)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _escape_html(text: str) -> str:
+    """Minimal HTML escaping for safe rendering inside markdown blocks."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────
@@ -145,7 +256,6 @@ def _render_sidebar() -> None:
             except (json.JSONDecodeError, Exception) as exc:
                 st.error(f"Invalid project file: {exc}")
 
-        # Also show saved-on-disk projects for quick switching
         saved = list_projects()
         if saved:
             st.markdown("**Saved on disk:**")
@@ -203,7 +313,11 @@ def _render_sidebar() -> None:
         proj.integrator_llm = st.sidebar.selectbox(
             "Integrator LLM",
             AVAILABLE_LLMS,
-            index=AVAILABLE_LLMS.index(proj.integrator_llm),
+            index=AVAILABLE_LLMS.index(
+                proj.integrator_llm
+                if proj.integrator_llm in AVAILABLE_LLMS
+                else AVAILABLE_LLMS[0]
+            ),
             key="sb_int_llm",
         )
         proj.integrator_prompt = st.sidebar.text_area(
@@ -221,27 +335,31 @@ def _render_sidebar() -> None:
             type="primary",
             use_container_width=True,
         ):
-            engine: WorkflowEngine = st.session_state.engine
-            with st.spinner("Running workflow..."):
+            engine = _engine()
+            with st.spinner("Running full workflow..."):
                 engine.run_project(proj)
             save_project(proj)
             st.session_state.run_complete = True
-            _flash("Workflow complete!")
+            _flash("Workflow complete — all tabs executed and integrated!")
             st.rerun()
 
 
 # ── Subtask card renderer ────────────────────────────────────────────
 
 
-def _render_subtask(
-    sub: SubTask, index: int, tab: SequenceTab
-) -> None:
-    """Render a single action-item sub-slot."""
-    with st.expander(
-        f"Action Item {index + 1}"
-        + (f" — {sub.prompt[:40]}..." if len(sub.prompt) > 40 else (f" — {sub.prompt}" if sub.prompt else "")),
-        expanded=not sub.output,
-    ):
+def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
+    """Render a single action-item sub-slot with LLM/tool selectors and output."""
+
+    # Build expander label with prompt preview
+    label = f"Action Item {index + 1}"
+    if sub.prompt:
+        preview = sub.prompt[:40] + ("..." if len(sub.prompt) > 40 else "")
+        label += f" \u2014 {preview}"
+    if sub.output:
+        label += "  \u2705"
+
+    with st.expander(label, expanded=not sub.output):
+        # ── Prompt ───────────────────────────────────────────────────
         sub.prompt = st.text_area(
             "Sub-task prompt",
             value=sub.prompt,
@@ -251,21 +369,12 @@ def _render_subtask(
             label_visibility="collapsed",
         )
 
+        # ── LLM + Tools + Remove ────────────────────────────────────
         c1, c2, c3 = st.columns([2, 3, 1])
         with c1:
-            sub.llm = st.selectbox(
-                "LLM",
-                AVAILABLE_LLMS,
-                index=AVAILABLE_LLMS.index(sub.llm),
-                key=f"subllm_{sub.id}",
-            )
+            sub.llm = _llm_selector(sub.llm, key_prefix=f"sub_{sub.id}")
         with c2:
-            sub.tools = st.multiselect(
-                "Tools",
-                AVAILABLE_TOOLS,
-                default=sub.tools,
-                key=f"subtools_{sub.id}",
-            )
+            sub.tools = _tool_selector(sub.tools, key_prefix=f"sub_{sub.id}")
         with c3:
             st.markdown("")  # vertical spacer
             if st.button(
@@ -276,9 +385,10 @@ def _render_subtask(
                 tab.subtasks = [s for s in tab.subtasks if s.id != sub.id]
                 st.rerun()
 
+        # ── Output display ───────────────────────────────────────────
         if sub.output:
             st.markdown("**Output:**")
-            st.code(sub.output, language=None)
+            _render_output(sub.output, key_prefix=f"subout_{sub.id}")
 
 
 # ── Sequence-tab editor ──────────────────────────────────────────────
@@ -327,24 +437,14 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
     # ── LLM + Tools for main prompt ──────────────────────────────────
     cl, ct = st.columns([1, 2])
     with cl:
-        tab.llm = st.selectbox(
-            "LLM for this tab",
-            AVAILABLE_LLMS,
-            index=AVAILABLE_LLMS.index(tab.llm),
-            key=f"tllm_{tab.id}",
-        )
+        tab.llm = _llm_selector(tab.llm, key_prefix=f"tab_{tab.id}", label="LLM for this tab")
     with ct:
-        tab.tools = st.multiselect(
-            "Tools for this tab",
-            AVAILABLE_TOOLS,
-            default=tab.tools,
-            key=f"ttools_{tab.id}",
-        )
+        tab.tools = _tool_selector(tab.tools, key_prefix=f"tab_{tab.id}", label="Tools for this tab")
 
     # ── Main prompt output ───────────────────────────────────────────
     if tab.output:
         with st.expander("Main prompt output", expanded=True):
-            st.code(tab.output, language=None)
+            _render_output(tab.output, key_prefix=f"tabout_{tab.id}")
 
     # ── Sub-tasks / Action Items ─────────────────────────────────────
     st.markdown("---")
@@ -356,6 +456,7 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
     for si, sub in enumerate(tab.subtasks):
         _render_subtask(sub, si, tab)
 
+    # ── Add Action Item button ───────────────────────────────────────
     if st.button(
         "\u2795 Add Action Item",
         key=f"addsub_{tab.id}",
@@ -363,6 +464,33 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
     ):
         tab.subtasks.append(SubTask())
         st.rerun()
+
+    # ── Run Tab button ───────────────────────────────────────────────
+    st.markdown("---")
+    run_col, clear_col = st.columns([3, 1])
+    with run_col:
+        if st.button(
+            f"\u25b6  Run \"{tab.title}\"",
+            key=f"runtab_{tab.id}",
+            type="primary",
+            use_container_width=True,
+        ):
+            engine = _engine()
+            with st.spinner(f"Running \"{tab.title}\"..."):
+                engine.run_tab(tab)
+            save_project(proj)
+            _flash(f"Tab \"{tab.title}\" execution complete!")
+            st.rerun()
+    with clear_col:
+        if st.button(
+            "\u21bb Clear outputs",
+            key=f"cleartab_{tab.id}",
+            use_container_width=True,
+        ):
+            tab.output = None
+            for sub in tab.subtasks:
+                sub.output = None
+            st.rerun()
 
 
 # ── Main area ────────────────────────────────────────────────────────
@@ -389,6 +517,23 @@ def _render_main() -> None:
             "\u2190 Use the sidebar to **create** a new project or **load** "
             "an existing one."
         )
+
+        # Quick-start reference
+        with st.expander("How it works"):
+            st.markdown(
+                "1. **Create** a project and give it a name.\n"
+                "2. **Add sequence tabs** \u2014 each tab represents a major step "
+                "in your workflow (e.g. *Research*, *Draft*, *Review*).\n"
+                "3. For each tab, write a **main prompt** and optionally add "
+                "**action items** (sub-tasks).\n"
+                "4. **Pick an LLM** (Claude-3, GPT-4, Grok, or a Custom model) "
+                "and **select tools** for every prompt. Tools run in sequence: "
+                "the output of one feeds into the next.\n"
+                "5. Click **Run Tab** to execute a single tab, or **Run All "
+                "Tabs** in the sidebar to execute the full workflow and "
+                "integrate results.\n"
+                "6. **Save** to disk or **Export** as JSON to share."
+            )
         return
 
     # ── Editable project title ───────────────────────────────────────
@@ -399,7 +544,6 @@ def _render_main() -> None:
         label_visibility="collapsed",
         placeholder="Project name...",
     )
-    # Show as big header after the input
     st.title(proj.name)
 
     if proj.description:
@@ -427,10 +571,9 @@ def _render_main() -> None:
     if not proj.tabs:
         proj.add_tab("Tab 1")
 
-    tab_labels = [f"{t.title}" for t in proj.tabs] + ["\u2795 New Tab"]
+    tab_labels = [t.title for t in proj.tabs] + ["\u2795 New Tab"]
     ui_tabs = st.tabs(tab_labels)
 
-    # Render each existing tab
     for idx in range(len(proj.tabs)):
         with ui_tabs[idx]:
             _render_sequence_tab(proj.tabs[idx], idx, proj)
@@ -453,9 +596,8 @@ def _render_main() -> None:
     if st.session_state.run_complete and proj.final_result:
         st.markdown("---")
         st.subheader("\U0001f4cb Integrated Project Result")
-        st.markdown(proj.final_result)
+        _render_output(proj.final_result, key_prefix="final")
 
-        # Offer download of the final result
         st.download_button(
             "\u2b07 Download Result",
             data=proj.final_result.encode("utf-8"),

@@ -12,22 +12,19 @@ from pydantic import BaseModel, Field
 # ── Constants ────────────────────────────────────────────────────────
 
 AVAILABLE_LLMS: list[str] = [
-    "GPT-4",
-    "GPT-4o",
     "Claude-3",
-    "Claude-3.5-Sonnet",
+    "GPT-4",
     "Grok",
-    "Gemini-Pro",
-    "Llama-3",
+    "Custom",
 ]
 
 AVAILABLE_TOOLS: list[str] = [
-    "web_search",
-    "code_execution",
-    "file_reader",
-    "image_generation",
-    "data_analysis",
-    "summarizer",
+    "Web Search",
+    "Code Execution",
+    "Browse Page",
+    "Image Viewer",
+    "PDF Search",
+    "None",
 ]
 
 DEFAULT_INTEGRATOR_PROMPT = (
