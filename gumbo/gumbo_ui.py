@@ -4,16 +4,12 @@ Run with:
     streamlit run gumbo/gumbo_ui.py
 
 Features:
-  - Editable project title in the main area
-  - Sidebar: New Project / Load Project (file upload) / Save Project (download)
-  - Dynamic sequence tabs with drag-style prompt text areas
-  - Dynamic sub-slots (action items) under each tab
-  - Per-task LLM dropdown (Claude-3, GPT-4, Grok, Custom) + custom model input
-  - Per-task multi-select tools (Web Search, Code Execution, Browse Page, etc.)
-  - "Run Tab" button per tab — executes the sequential multi-tool pipeline
-  - "Run All Tabs" in sidebar — full project execution + integration
-  - Output display below each item after running
-  - Full session-state persistence across Streamlit reruns
+  - Sidebar API-key configuration (Anthropic / OpenAI / xAI)
+  - Real LLM calls + sequential tool pipeline via gumbo_executors
+  - Graceful fallback to stub executor when no keys are configured
+  - st.progress bars for Run Tab / Run All Tabs operations
+  - Dynamic sequence tabs + action items with per-item output display
+  - Project save / load / export as JSON
 """
 
 from __future__ import annotations
@@ -23,7 +19,8 @@ from io import BytesIO
 
 import streamlit as st
 
-from gumbo.engine import WorkflowEngine
+from gumbo.engine import WorkflowEngine, _stub_execute
+from gumbo.gumbo_executors import execute_task as real_execute_task
 from gumbo.models import (
     AVAILABLE_LLMS,
     AVAILABLE_TOOLS,
@@ -42,11 +39,9 @@ st.set_page_config(page_title="Gumbo", page_icon="\U0001f372", layout="wide")
 st.markdown(
     """
     <style>
-    /* expander label weight */
     div[data-testid="stExpander"] details summary p {
         font-weight: 600;
     }
-    /* pill badge for sequence position */
     .tab-badge {
         display: inline-block;
         background: #4A90D9;
@@ -56,10 +51,8 @@ st.markdown(
         font-size: 0.75rem;
         margin-right: 6px;
     }
-    /* run-status indicator */
     .run-ok  { color: #28a745; font-weight: 600; }
     .run-err { color: #dc3545; font-weight: 600; }
-    /* output block styling */
     .output-block {
         background: #f0f2f6;
         border-left: 4px solid #4A90D9;
@@ -70,7 +63,7 @@ st.markdown(
         font-size: 0.85rem;
         white-space: pre-wrap;
     }
-    .tool-step {
+    .tool-step-block {
         background: #e8f4fd;
         border-left: 3px solid #0ea5e9;
         padding: 6px 10px;
@@ -78,7 +71,10 @@ st.markdown(
         margin: 4px 0;
         font-family: monospace;
         font-size: 0.82rem;
+        white-space: pre-wrap;
     }
+    .key-ok  { color: #28a745; }
+    .key-miss { color: #999; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -91,6 +87,14 @@ _DEFAULTS: dict = {
     "engine": WorkflowEngine(),
     "run_complete": False,
     "status_msg": None,
+    # API keys (empty string = not configured)
+    "ANTHROPIC_API_KEY": "",
+    "OPENAI_API_KEY": "",
+    "XAI_API_KEY": "",
+    "GOOGLE_CSE_API_KEY": "",
+    "GOOGLE_CSE_CX": "",
+    # Executor mode
+    "use_real_executor": False,
 }
 
 for _k, _v in _DEFAULTS.items():
@@ -113,37 +117,49 @@ def _flash(msg: str) -> None:
 
 
 def _engine() -> WorkflowEngine:
-    return st.session_state.engine
+    engine: WorkflowEngine = st.session_state.engine
+    if st.session_state.use_real_executor:
+        engine.swap_executor(real_execute_task)
+    else:
+        engine.swap_executor(_stub_execute)
+    return engine
 
 
-# ── LLM selector helper (handles "Custom" with text input) ───────────
+def _has_any_key() -> bool:
+    return any(
+        st.session_state.get(k)
+        for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY")
+    )
 
 
-def _llm_selector(
-    current_llm: str,
-    key_prefix: str,
-    label: str = "LLM",
-) -> str:
-    """Render an LLM dropdown.  When 'Custom' is chosen, show a text input.
+# ── HTML helpers ─────────────────────────────────────────────────────
 
-    Returns the resolved LLM string (either a preset name or the custom value).
-    """
-    # Determine dropdown index
+
+def _esc(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _render_output(output: str | None, key_prefix: str) -> None:
+    if not output:
+        return
+    st.markdown(
+        f'<div class="output-block">{_esc(output)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── LLM selector ────────────────────────────────────────────────────
+
+
+def _llm_selector(current_llm: str, key_prefix: str, label: str = "LLM") -> str:
     if current_llm in AVAILABLE_LLMS:
         idx = AVAILABLE_LLMS.index(current_llm)
     else:
-        # Previously-entered custom value — show Custom selected
         idx = AVAILABLE_LLMS.index("Custom")
 
-    chosen = st.selectbox(
-        label,
-        AVAILABLE_LLMS,
-        index=idx,
-        key=f"{key_prefix}_llm",
-    )
+    chosen = st.selectbox(label, AVAILABLE_LLMS, index=idx, key=f"{key_prefix}_llm")
 
     if chosen == "Custom":
-        # Preserve a previous custom value as the default
         default_custom = current_llm if current_llm not in AVAILABLE_LLMS else ""
         custom_val = st.text_input(
             "Custom model name",
@@ -152,22 +168,16 @@ def _llm_selector(
             placeholder="e.g. mistral-large, llama-3.1-70b...",
         )
         return custom_val if custom_val else "Custom"
-
     return chosen
 
 
-# ── Tool multi-select helper ─────────────────────────────────────────
+# ── Tool selector ────────────────────────────────────────────────────
 
 
 def _tool_selector(
-    current_tools: list[str],
-    key_prefix: str,
-    label: str = "Tools (run in sequence)",
+    current_tools: list[str], key_prefix: str, label: str = "Tools (run in sequence)"
 ) -> list[str]:
-    """Render a multi-select for tools.  Filters out 'None' from the result."""
-    # Ensure defaults are valid options
     valid_defaults = [t for t in current_tools if t in AVAILABLE_TOOLS]
-
     selected = st.multiselect(
         label,
         AVAILABLE_TOOLS,
@@ -175,34 +185,9 @@ def _tool_selector(
         key=f"{key_prefix}_tools",
         help="Tools execute in sequence: output of one feeds into the next.",
     )
-
-    # If user explicitly picks "None" alongside others, only keep "None"
     if "None" in selected and len(selected) > 1:
         return ["None"]
     return selected
-
-
-# ── Output renderer ──────────────────────────────────────────────────
-
-
-def _render_output(output: str | None, key_prefix: str) -> None:
-    """Display the output block for a completed task."""
-    if not output:
-        return
-
-    st.markdown(
-        f'<div class="output-block">{_escape_html(output)}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-def _escape_html(text: str) -> str:
-    """Minimal HTML escaping for safe rendering inside markdown blocks."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────
@@ -211,6 +196,79 @@ def _escape_html(text: str) -> str:
 def _render_sidebar() -> None:
     st.sidebar.title("\U0001f372 Gumbo")
     st.sidebar.caption("LLM-orchestrated project workflows")
+    st.sidebar.markdown("---")
+
+    # ── API Key Configuration ────────────────────────────────────────
+    with st.sidebar.expander("\U0001f511  API Keys", expanded=not _has_any_key()):
+        st.session_state["ANTHROPIC_API_KEY"] = st.text_input(
+            "Anthropic API Key",
+            value=st.session_state["ANTHROPIC_API_KEY"],
+            type="password",
+            key="sb_key_anthropic",
+            placeholder="sk-ant-...",
+            help="Required for Claude-3 calls",
+        )
+        st.session_state["OPENAI_API_KEY"] = st.text_input(
+            "OpenAI API Key",
+            value=st.session_state["OPENAI_API_KEY"],
+            type="password",
+            key="sb_key_openai",
+            placeholder="sk-...",
+            help="Required for GPT-4 calls",
+        )
+        st.session_state["XAI_API_KEY"] = st.text_input(
+            "xAI API Key (Grok)",
+            value=st.session_state["XAI_API_KEY"],
+            type="password",
+            key="sb_key_xai",
+            placeholder="xai-...",
+            help="Required for Grok calls",
+        )
+
+        with st.popover("Optional: Search keys"):
+            st.session_state["GOOGLE_CSE_API_KEY"] = st.text_input(
+                "Google CSE API Key",
+                value=st.session_state["GOOGLE_CSE_API_KEY"],
+                type="password",
+                key="sb_key_gcse",
+                placeholder="AIza...",
+                help="For Web Search tool (falls back to DuckDuckGo)",
+            )
+            st.session_state["GOOGLE_CSE_CX"] = st.text_input(
+                "Google CSE CX ID",
+                value=st.session_state["GOOGLE_CSE_CX"],
+                key="sb_key_gcse_cx",
+                placeholder="a1b2c3...",
+            )
+
+        # Status indicators
+        def _key_dot(name: str, label: str) -> str:
+            cls = "key-ok" if st.session_state.get(name) else "key-miss"
+            sym = "\u2705" if st.session_state.get(name) else "\u26aa"
+            return f'<span class="{cls}">{sym} {label}</span>'
+
+        st.markdown(
+            _key_dot("ANTHROPIC_API_KEY", "Anthropic")
+            + "&nbsp;&nbsp;"
+            + _key_dot("OPENAI_API_KEY", "OpenAI")
+            + "&nbsp;&nbsp;"
+            + _key_dot("XAI_API_KEY", "xAI"),
+            unsafe_allow_html=True,
+        )
+
+    # ── Execution mode toggle ────────────────────────────────────────
+    st.session_state["use_real_executor"] = st.sidebar.toggle(
+        "Use real LLM APIs",
+        value=st.session_state["use_real_executor"],
+        help=(
+            "ON = call real LLM APIs (requires keys above).  "
+            "OFF = use simulated stub responses for demo/testing."
+        ),
+        key="sb_exec_toggle",
+    )
+    if st.session_state["use_real_executor"] and not _has_any_key():
+        st.sidebar.warning("Real mode is on but no API keys are set.")
+
     st.sidebar.markdown("---")
 
     # ── New Project ──────────────────────────────────────────────────
@@ -238,7 +296,7 @@ def _render_sidebar() -> None:
             _flash(f"Created project \"{proj.name}\"")
             st.rerun()
 
-    # ── Load Project (file uploader) ─────────────────────────────────
+    # ── Load Project ─────────────────────────────────────────────────
     with st.sidebar.expander("\U0001f4c2  Load Project"):
         uploaded = st.file_uploader(
             "Upload a project JSON file",
@@ -287,7 +345,6 @@ def _render_sidebar() -> None:
     proj = _project()
     if proj:
         st.sidebar.markdown("---")
-
         col_save, col_dl = st.sidebar.columns(2)
         with col_save:
             if st.button(
@@ -307,7 +364,7 @@ def _render_sidebar() -> None:
                 help="Download project as JSON",
             )
 
-        # ── Integrator configuration ─────────────────────────────────
+        # ── Integrator config ────────────────────────────────────────
         st.sidebar.markdown("---")
         st.sidebar.markdown("### Integrator")
         proj.integrator_llm = st.sidebar.selectbox(
@@ -336,21 +393,24 @@ def _render_sidebar() -> None:
             use_container_width=True,
         ):
             engine = _engine()
-            with st.spinner("Running full workflow..."):
-                engine.run_project(proj)
+            progress_bar = st.sidebar.progress(0, text="Starting...")
+
+            def _project_progress(step: int, total: int, label: str) -> None:
+                frac = min(step / max(total, 1), 1.0)
+                progress_bar.progress(frac, text=f"[{step}/{total}] {label}")
+
+            engine.run_project(proj, on_progress=_project_progress)
+            progress_bar.progress(1.0, text="Done!")
             save_project(proj)
             st.session_state.run_complete = True
-            _flash("Workflow complete — all tabs executed and integrated!")
+            _flash("Workflow complete \u2014 all tabs executed and integrated!")
             st.rerun()
 
 
-# ── Subtask card renderer ────────────────────────────────────────────
+# ── Subtask renderer ─────────────────────────────────────────────────
 
 
 def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
-    """Render a single action-item sub-slot with LLM/tool selectors and output."""
-
-    # Build expander label with prompt preview
     label = f"Action Item {index + 1}"
     if sub.prompt:
         preview = sub.prompt[:40] + ("..." if len(sub.prompt) > 40 else "")
@@ -359,7 +419,6 @@ def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
         label += "  \u2705"
 
     with st.expander(label, expanded=not sub.output):
-        # ── Prompt ───────────────────────────────────────────────────
         sub.prompt = st.text_area(
             "Sub-task prompt",
             value=sub.prompt,
@@ -369,14 +428,13 @@ def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
             label_visibility="collapsed",
         )
 
-        # ── LLM + Tools + Remove ────────────────────────────────────
         c1, c2, c3 = st.columns([2, 3, 1])
         with c1:
             sub.llm = _llm_selector(sub.llm, key_prefix=f"sub_{sub.id}")
         with c2:
             sub.tools = _tool_selector(sub.tools, key_prefix=f"sub_{sub.id}")
         with c3:
-            st.markdown("")  # vertical spacer
+            st.markdown("")
             if st.button(
                 "\U0001f5d1 Remove",
                 key=f"subrm_{sub.id}",
@@ -385,7 +443,6 @@ def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
                 tab.subtasks = [s for s in tab.subtasks if s.id != sub.id]
                 st.rerun()
 
-        # ── Output display ───────────────────────────────────────────
         if sub.output:
             st.markdown("**Output:**")
             _render_output(sub.output, key_prefix=f"subout_{sub.id}")
@@ -395,9 +452,7 @@ def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
 
 
 def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
-    """Render the full editor for one SequenceTab."""
-
-    # ── Tab header row ───────────────────────────────────────────────
+    # ── Header ───────────────────────────────────────────────────────
     hdr1, hdr2 = st.columns([5, 1])
     with hdr1:
         tab.title = st.text_input(
@@ -434,19 +489,22 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
         label_visibility="collapsed",
     )
 
-    # ── LLM + Tools for main prompt ──────────────────────────────────
     cl, ct = st.columns([1, 2])
     with cl:
-        tab.llm = _llm_selector(tab.llm, key_prefix=f"tab_{tab.id}", label="LLM for this tab")
+        tab.llm = _llm_selector(
+            tab.llm, key_prefix=f"tab_{tab.id}", label="LLM for this tab"
+        )
     with ct:
-        tab.tools = _tool_selector(tab.tools, key_prefix=f"tab_{tab.id}", label="Tools for this tab")
+        tab.tools = _tool_selector(
+            tab.tools, key_prefix=f"tab_{tab.id}", label="Tools for this tab"
+        )
 
-    # ── Main prompt output ───────────────────────────────────────────
+    # Main prompt output
     if tab.output:
         with st.expander("Main prompt output", expanded=True):
             _render_output(tab.output, key_prefix=f"tabout_{tab.id}")
 
-    # ── Sub-tasks / Action Items ─────────────────────────────────────
+    # ── Action Items ─────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("##### Action Items")
 
@@ -456,7 +514,6 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
     for si, sub in enumerate(tab.subtasks):
         _render_subtask(sub, si, tab)
 
-    # ── Add Action Item button ───────────────────────────────────────
     if st.button(
         "\u2795 Add Action Item",
         key=f"addsub_{tab.id}",
@@ -465,7 +522,7 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
         tab.subtasks.append(SubTask())
         st.rerun()
 
-    # ── Run Tab button ───────────────────────────────────────────────
+    # ── Run Tab / Clear ──────────────────────────────────────────────
     st.markdown("---")
     run_col, clear_col = st.columns([3, 1])
     with run_col:
@@ -476,14 +533,24 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             use_container_width=True,
         ):
             engine = _engine()
-            with st.spinner(f"Running \"{tab.title}\"..."):
-                engine.run_tab(tab)
+            total_steps = 1 + len(tab.subtasks)
+            progress_bar = st.progress(0, text=f"Running \"{tab.title}\"...")
+            status_text = st.empty()
+
+            def _tab_progress(step: int, total: int, label: str) -> None:
+                frac = min((step + 1) / max(total, 1), 1.0)
+                progress_bar.progress(frac, text=f"[{step + 1}/{total}] {label}")
+                status_text.caption(f"Executing: {label}")
+
+            engine.run_tab(tab, on_progress=_tab_progress)
+            progress_bar.progress(1.0, text="Done!")
+            status_text.empty()
             save_project(proj)
             _flash(f"Tab \"{tab.title}\" execution complete!")
             st.rerun()
     with clear_col:
         if st.button(
-            "\u21bb Clear outputs",
+            "\u21bb Clear",
             key=f"cleartab_{tab.id}",
             use_container_width=True,
         ):
@@ -499,7 +566,7 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
 def _render_main() -> None:
     proj = _project()
 
-    # ── Flash message ────────────────────────────────────────────────
+    # Flash message
     if st.session_state.status_msg:
         st.success(st.session_state.status_msg)
         st.session_state.status_msg = None
@@ -518,25 +585,30 @@ def _render_main() -> None:
             "an existing one."
         )
 
-        # Quick-start reference
         with st.expander("How it works"):
             st.markdown(
-                "1. **Create** a project and give it a name.\n"
-                "2. **Add sequence tabs** \u2014 each tab represents a major step "
+                "1. **Add your API keys** in the sidebar under "
+                "\U0001f511 API Keys.  Toggle *Use real LLM APIs* on.\n"
+                "2. **Create** a project and give it a name.\n"
+                "3. **Add sequence tabs** \u2014 each tab represents a major step "
                 "in your workflow (e.g. *Research*, *Draft*, *Review*).\n"
-                "3. For each tab, write a **main prompt** and optionally add "
+                "4. For each tab, write a **main prompt** and optionally add "
                 "**action items** (sub-tasks).\n"
-                "4. **Pick an LLM** (Claude-3, GPT-4, Grok, or a Custom model) "
-                "and **select tools** for every prompt. Tools run in sequence: "
-                "the output of one feeds into the next.\n"
-                "5. Click **Run Tab** to execute a single tab, or **Run All "
-                "Tabs** in the sidebar to execute the full workflow and "
-                "integrate results.\n"
-                "6. **Save** to disk or **Export** as JSON to share."
+                "5. **Pick an LLM** (Claude-3, GPT-4, Grok, or Custom) "
+                "and **select tools** for every prompt.  Tools run in "
+                "sequence before the LLM call:\n"
+                "   - **Web Search** \u2014 Google Custom Search or DuckDuckGo\n"
+                "   - **Code Execution** \u2014 runs Python in a subprocess\n"
+                "   - **Browse Page** \u2014 fetches & extracts text from URLs\n"
+                "   - **Image Viewer** \u2014 acknowledges image references\n"
+                "   - **PDF Search** \u2014 PDF extraction (placeholder)\n"
+                "6. Click **Run Tab** to execute a single tab, or **Run All "
+                "Tabs** in the sidebar.  Progress bars show each step.\n"
+                "7. **Save** to disk or **Export** as JSON to share."
             )
         return
 
-    # ── Editable project title ───────────────────────────────────────
+    # ── Project header ───────────────────────────────────────────────
     proj.name = st.text_input(
         "Project Title",
         value=proj.name,
@@ -545,6 +617,10 @@ def _render_main() -> None:
         placeholder="Project name...",
     )
     st.title(proj.name)
+
+    # Execution mode indicator
+    mode = "Real APIs" if st.session_state.use_real_executor else "Simulated (stub)"
+    st.caption(f"Execution mode: **{mode}**")
 
     if proj.description:
         proj.description = st.text_input(
@@ -567,7 +643,7 @@ def _render_main() -> None:
 
     st.markdown("---")
 
-    # ── Sequence tabs ────────────────────────────────────────────────
+    # ── Tabs ─────────────────────────────────────────────────────────
     if not proj.tabs:
         proj.add_tab("Tab 1")
 
@@ -578,7 +654,6 @@ def _render_main() -> None:
         with ui_tabs[idx]:
             _render_sequence_tab(proj.tabs[idx], idx, proj)
 
-    # "+ New Tab" pseudo-tab
     with ui_tabs[-1]:
         st.markdown("### Add a Sequence Tab")
         new_title = st.text_input(
@@ -592,7 +667,7 @@ def _render_main() -> None:
             save_project(proj)
             st.rerun()
 
-    # ── Integrated result panel ──────────────────────────────────────
+    # ── Integrated result ────────────────────────────────────────────
     if st.session_state.run_complete and proj.final_result:
         st.markdown("---")
         st.subheader("\U0001f4cb Integrated Project Result")

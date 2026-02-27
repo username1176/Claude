@@ -1,19 +1,18 @@
 """Workflow engine — runs tabs/subtasks in sequence and integrates results.
 
-The actual LLM calls go through `execute_task`.  By default this uses a
-**stub** that echoes the prompt back (so the app can be demo'd without API
-keys).  Swap `_stub_execute` for a real implementation that calls your
-preferred LLM provider.
+The engine accepts an ``executor`` callable that actually performs each
+task (tool pipeline + LLM call).  Two executors ship out of the box:
 
-Multi-tool support
+  - ``_stub_execute`` (default) — echoes prompts back so the app can be
+    demo'd without API keys.
+  - ``gumbo_executors.execute_task`` — calls real LLM APIs and runs real
+    tool functions.
+
+Progress callbacks
 ------------------
-When a task specifies multiple tools, each tool is executed **in sequence**
-on the task input.  The output of one tool becomes additional context for the
-next, producing a pipeline effect:
-
-    prompt → [Web Search] → result₁ → [Code Execution] → result₂ → …
-
-The "None" tool is a pass-through and produces no additional output.
+``run_tab`` and ``run_project`` accept an optional ``on_progress``
+callback of the form ``(step_index, total_steps, label) -> None``.
+The UI uses this to drive ``st.progress`` bars.
 """
 
 from __future__ import annotations
@@ -48,21 +47,13 @@ class TaskResult:
     error: Optional[str] = None
 
 
-# ── Type alias for executor functions ────────────────────────────────
+# ── Type aliases ─────────────────────────────────────────────────────
 
 ExecutorFn = Callable[[str, str, list[str], Optional[str]], TaskResult]
+ProgressFn = Callable[[int, int, str], None]
 
 
-# ── Simulated tool runner ────────────────────────────────────────────
-
-
-def _simulate_tool(tool: str, prompt: str, prior_output: str) -> str:
-    """Simulate a single tool execution.  Returns a descriptive string."""
-    context_note = f" (building on prior output)" if prior_output else ""
-    return f"  [{tool}]{context_note}: Processed \"{prompt[:60]}{'...' if len(prompt) > 60 else ''}\""
-
-
-# ── Default stub executor ────────────────────────────────────────────
+# ── Default stub executor (no API keys needed) ──────────────────────
 
 
 def _stub_execute(
@@ -72,36 +63,33 @@ def _stub_execute(
     context: Optional[str] = None,
 ) -> TaskResult:
     """Demo executor — simulates sequential multi-tool pipeline execution."""
-
-    # Filter out "None" tool — it's a pass-through
     active_tools = [t for t in tools if t != "None"]
 
     ctx_note = ""
     if context:
         ctx_note = f"\n  [Prior context: {context[:80]}...]"
 
-    # ── Sequential tool pipeline ─────────────────────────────────────
     tool_steps: list[ToolStepResult] = []
-    pipeline_output = ""
-
     if active_tools:
         for i, tool in enumerate(active_tools):
-            step_text = _simulate_tool(tool, prompt, pipeline_output)
+            step_text = (
+                f"[{tool}]: Processed "
+                f"\"{prompt[:60]}{'...' if len(prompt) > 60 else ''}\""
+            )
             tool_steps.append(ToolStepResult(tool=tool, text=step_text))
-            pipeline_output += step_text + "\n"
 
-        tool_pipeline_summary = "\n".join(
-            f"  Step {i + 1}/{len(active_tools)}: {step.tool} -> {step.text.strip()}"
-            for i, step in enumerate(tool_steps)
+        tool_summary = "\n".join(
+            f"  Step {i + 1}/{len(active_tools)}: {s.tool} -> {s.text}"
+            for i, s in enumerate(tool_steps)
         )
     else:
-        tool_pipeline_summary = "  (no tools selected)"
+        tool_summary = "  (no tools selected)"
 
     body = (
         f"[Simulated {llm} response]\n"
         f"Prompt: {prompt[:120]}{'...' if len(prompt) > 120 else ''}\n"
         f"Tool pipeline ({len(active_tools)} tool{'s' if len(active_tools) != 1 else ''}):\n"
-        f"{tool_pipeline_summary}"
+        f"{tool_summary}"
         f"{ctx_note}"
     )
 
@@ -122,6 +110,10 @@ class WorkflowEngine:
     def __init__(self, executor: ExecutorFn = _stub_execute) -> None:
         self._execute = executor
 
+    def swap_executor(self, executor: ExecutorFn) -> None:
+        """Hot-swap the executor (e.g. switch between stub and real)."""
+        self._execute = executor
+
     # -- single task --------------------------------------------------
 
     def run_task(
@@ -136,17 +128,30 @@ class WorkflowEngine:
 
     # -- full tab (main prompt + subtasks) ----------------------------
 
-    def run_tab(self, tab: SequenceTab) -> str:
+    def run_tab(
+        self,
+        tab: SequenceTab,
+        on_progress: Optional[ProgressFn] = None,
+    ) -> str:
         """Run a single tab: main prompt first, then subtasks in order.
 
         Each subtask receives the accumulated context from the main prompt
         and all prior subtasks, so later steps can build on earlier results.
         """
+        total = 1 + len(tab.subtasks)
+
+        if on_progress:
+            on_progress(0, total, f"Main prompt: {tab.title}")
+
         result = self.run_task(tab.main_prompt, tab.llm, tab.tools)
         tab.output = result.text
         context = result.text
 
-        for sub in tab.subtasks:
+        for i, sub in enumerate(tab.subtasks):
+            if on_progress:
+                label = sub.prompt[:40] if sub.prompt else f"Action item {i + 1}"
+                on_progress(i + 1, total, label)
+
             sub_result = self.run_task(sub.prompt, sub.llm, sub.tools, context)
             sub.output = sub_result.text
             context += "\n" + sub_result.text
@@ -155,13 +160,43 @@ class WorkflowEngine:
 
     # -- full project run --------------------------------------------
 
-    def run_project(self, project: Project) -> str:
+    def run_project(
+        self,
+        project: Project,
+        on_progress: Optional[ProgressFn] = None,
+    ) -> str:
         """Run every tab in sequence, then integrate."""
         all_outputs: list[str] = []
+        tabs = sorted(project.tabs, key=lambda t: t.position)
 
-        for tab in sorted(project.tabs, key=lambda t: t.position):
-            tab_context = self.run_tab(tab)
-            all_outputs.append(f"## {tab.title}\n{tab_context}")
+        # Total steps: every (main + subtasks) across all tabs + 1 integration
+        total = sum(1 + len(t.subtasks) for t in tabs) + 1
+        step = 0
+
+        for tab in tabs:
+            if on_progress:
+                on_progress(step, total, f"Tab: {tab.title}")
+
+            result = self.run_task(tab.main_prompt, tab.llm, tab.tools)
+            tab.output = result.text
+            context = result.text
+            step += 1
+
+            for i, sub in enumerate(tab.subtasks):
+                if on_progress:
+                    label = sub.prompt[:40] if sub.prompt else f"Action item {i + 1}"
+                    on_progress(step, total, f"{tab.title} > {label}")
+
+                sub_result = self.run_task(sub.prompt, sub.llm, sub.tools, context)
+                sub.output = sub_result.text
+                context += "\n" + sub_result.text
+                step += 1
+
+            all_outputs.append(f"## {tab.title}\n{context}")
+
+        # Integration step
+        if on_progress:
+            on_progress(step, total, "Integrating results...")
 
         combined = "\n\n---\n\n".join(all_outputs)
         integration_prompt = project.integrator_prompt.format(outputs=combined)
