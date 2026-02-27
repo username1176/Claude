@@ -1,0 +1,24 @@
+[theme]
+base = "dark"
+primaryColor       = "#3b82f6"
+backgroundColor    = "#080a0f"
+secondaryBackgroundColor = "#0d1117"
+textColor          = "#f1f5f9"
+font               = "sans serif"
+
+[server]
+headless          = true
+enableCORS        = false
+enableXsrfProtection = true
+port              = 8501
+maxUploadSize     = 50
+
+[browser]
+gatherUsageStats  = false
+
+[runner]
+magicEnabled      = false
+fastReruns        = true
+
+[logger]
+level             = "warning"

@@ -1,26 +1,20 @@
-# breath_detector.py + mood_net.py — Python dependencies
-#
-# Core (always needed)
-numpy>=1.23
+# ZeroTax AI — Python dependencies
 
-# Signal processing — strongly recommended; pure-FIR fallback used if absent
-scipy>=1.9
+# ── Core ──────────────────────────────────────────────────────────────────────
+streamlit>=1.40.0
+anthropic>=0.40.0
 
-# Microphone capture (Linux/macOS/Windows, Android via Buildozer)
-sounddevice>=0.4
+# ── Charts & Visualization ────────────────────────────────────────────────────
+plotly>=5.24.0
+pandas>=2.2.0
+matplotlib>=3.9.0
+numpy>=1.26.0
 
-# Neural network — mood_net.py
-# CPU-only wheel is fine (and much smaller); install one of:
-#   pip install torch                            # default (may include CUDA)
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
-#   RPi arm64: pip install torch (PyPI has ARM wheels from 2.0+)
-torch>=2.0
+# ── PDF Generation ────────────────────────────────────────────────────────────
+reportlab>=4.2.0
 
-# --- Optional: BLE heart-rate monitor (Polar H10, Wahoo Tickr, etc.) ---
-# bleak>=0.21          # uncomment: pip install bleak
+# ── Optional — RAG / knowledge base ──────────────────────────────────────────
+openai>=1.54.0
 
-# --- Raspberry Pi (I2C IMU) ---
-# smbus2>=0.4          # uncomment for RPi: pip install smbus2
-
-# --- Android (via Kivy / Buildozer) ---
-# plyer>=2.1           # uncomment for Android: pip install plyer
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dateutil>=2.9.0

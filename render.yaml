@@ -1,0 +1,21 @@
+# ZeroTax AI — Render deployment config
+# Deploy at: https://render.com/deploy
+
+services:
+  - type: web
+    name: zerotax-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # Set in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ZEROTAX_DB
+        value: /data/zerotax.db
+    disk:
+      name: zerotax-data
+      mountPath: /data
+      sizeGB: 1
