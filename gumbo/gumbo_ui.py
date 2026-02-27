@@ -1,20 +1,24 @@
-"""Gumbo UI — full-featured Streamlit front-end for project management.
+"""Gumbo UI — production-ready Streamlit front-end for project management.
 
 Run with:
     streamlit run gumbo/gumbo_ui.py
 
 Features:
-  - Sidebar API-key configuration (Anthropic / OpenAI / xAI)
+  - Sidebar API-key config (Anthropic / OpenAI / xAI / Google CSE)
   - Real LLM calls + sequential tool pipeline via gumbo_executors
-  - Graceful fallback to stub executor when no keys are configured
-  - st.progress bars for Run Tab / Run All Tabs operations
-  - Dynamic sequence tabs + action items with per-item output display
-  - Project save / load / export as JSON
+  - Graceful fallback to stub executor when no keys configured
+  - "Compile Project" button: merge all tab outputs into a polished Markdown doc
+  - Undo for tab / action-item removal
+  - Tooltips (st.info) and contextual help throughout
+  - Built-in "Life Tracker" demo project (5 tabs, 13 action items)
+  - st.progress bars for Run Tab / Run All / Compile
+  - Production logging
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from io import BytesIO
 
 import streamlit as st
@@ -27,8 +31,18 @@ from gumbo.models import (
     Project,
     SequenceTab,
     SubTask,
+    create_sample_project,
 )
 from gumbo.storage import delete_project, list_projects, load_project, save_project
+
+# ── Logging ──────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("gumbo.ui")
 
 # ── Page configuration ───────────────────────────────────────────────
 
@@ -39,42 +53,26 @@ st.set_page_config(page_title="Gumbo", page_icon="\U0001f372", layout="wide")
 st.markdown(
     """
     <style>
-    div[data-testid="stExpander"] details summary p {
-        font-weight: 600;
-    }
+    div[data-testid="stExpander"] details summary p { font-weight: 600; }
     .tab-badge {
-        display: inline-block;
-        background: #4A90D9;
-        color: white;
-        border-radius: 12px;
-        padding: 2px 10px;
-        font-size: 0.75rem;
-        margin-right: 6px;
+        display: inline-block; background: #4A90D9; color: white;
+        border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; margin-right: 6px;
     }
-    .run-ok  { color: #28a745; font-weight: 600; }
-    .run-err { color: #dc3545; font-weight: 600; }
     .output-block {
-        background: #f0f2f6;
-        border-left: 4px solid #4A90D9;
-        padding: 10px 14px;
-        border-radius: 4px;
-        margin: 6px 0 12px 0;
-        font-family: monospace;
-        font-size: 0.85rem;
-        white-space: pre-wrap;
+        background: #f0f2f6; border-left: 4px solid #4A90D9;
+        padding: 10px 14px; border-radius: 4px; margin: 6px 0 12px 0;
+        font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;
     }
-    .tool-step-block {
-        background: #e8f4fd;
-        border-left: 3px solid #0ea5e9;
-        padding: 6px 10px;
-        border-radius: 3px;
-        margin: 4px 0;
-        font-family: monospace;
-        font-size: 0.82rem;
-        white-space: pre-wrap;
+    .compile-block {
+        background: #f8f9fa; border: 1px solid #dee2e6;
+        padding: 16px 20px; border-radius: 6px; margin: 10px 0;
     }
-    .key-ok  { color: #28a745; }
+    .key-ok   { color: #28a745; }
     .key-miss { color: #999; }
+    .undo-bar {
+        background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;
+        padding: 8px 14px; margin-bottom: 12px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -87,7 +85,7 @@ _DEFAULTS: dict = {
     "engine": WorkflowEngine(),
     "run_complete": False,
     "status_msg": None,
-    # API keys (empty string = not configured)
+    # API keys
     "ANTHROPIC_API_KEY": "",
     "OPENAI_API_KEY": "",
     "XAI_API_KEY": "",
@@ -95,11 +93,16 @@ _DEFAULTS: dict = {
     "GOOGLE_CSE_CX": "",
     # Executor mode
     "use_real_executor": False,
+    # Undo stack: list of (action, payload) tuples
+    "undo_stack": [],
 }
 
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
+
+
+# ── Accessors ────────────────────────────────────────────────────────
 
 
 def _project() -> Project | None:
@@ -110,6 +113,7 @@ def _set_project(proj: Project) -> None:
     st.session_state.project = proj
     st.session_state.run_complete = False
     st.session_state.status_msg = None
+    logger.info("Active project set: %s (%s)", proj.name, proj.id)
 
 
 def _flash(msg: str) -> None:
@@ -132,6 +136,55 @@ def _has_any_key() -> bool:
     )
 
 
+# ── Undo system ──────────────────────────────────────────────────────
+
+
+def _push_undo(action: str, payload: dict) -> None:
+    stack: list = st.session_state.undo_stack
+    stack.append({"action": action, "payload": payload})
+    # Keep last 20 actions
+    if len(stack) > 20:
+        st.session_state.undo_stack = stack[-20:]
+
+
+def _pop_undo() -> dict | None:
+    stack: list = st.session_state.undo_stack
+    if not stack:
+        return None
+    return stack.pop()
+
+
+def _apply_undo(entry: dict) -> str:
+    """Apply an undo action and return a human-readable description."""
+    proj = _project()
+    if proj is None:
+        return "No project to undo into."
+
+    action = entry["action"]
+    p = entry["payload"]
+
+    if action == "remove_tab":
+        tab = SequenceTab(**p["tab_data"])
+        proj.tabs.insert(p["position"], tab)
+        for i, t in enumerate(proj.tabs):
+            t.position = i
+        proj.touch()
+        save_project(proj)
+        return f"Restored tab \"{tab.title}\""
+
+    elif action == "remove_subtask":
+        tab = next((t for t in proj.tabs if t.id == p["tab_id"]), None)
+        if tab is None:
+            return "Parent tab no longer exists."
+        sub = SubTask(**p["subtask_data"])
+        pos = min(p["position"], len(tab.subtasks))
+        tab.subtasks.insert(pos, sub)
+        save_project(proj)
+        return f"Restored action item in \"{tab.title}\""
+
+    return f"Unknown undo action: {action}"
+
+
 # ── HTML helpers ─────────────────────────────────────────────────────
 
 
@@ -139,7 +192,7 @@ def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _render_output(output: str | None, key_prefix: str) -> None:
+def _render_output(output: str | None) -> None:
     if not output:
         return
     st.markdown(
@@ -190,7 +243,9 @@ def _tool_selector(
     return selected
 
 
-# ── Sidebar ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+#  SIDEBAR
+# ══════════════════════════════════════════════════════════════════════
 
 
 def _render_sidebar() -> None:
@@ -241,7 +296,6 @@ def _render_sidebar() -> None:
                 placeholder="a1b2c3...",
             )
 
-        # Status indicators
         def _key_dot(name: str, label: str) -> str:
             cls = "key-ok" if st.session_state.get(name) else "key-miss"
             sym = "\u2705" if st.session_state.get(name) else "\u26aa"
@@ -256,13 +310,13 @@ def _render_sidebar() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── Execution mode toggle ────────────────────────────────────────
+    # ── Execution mode ───────────────────────────────────────────────
     st.session_state["use_real_executor"] = st.sidebar.toggle(
         "Use real LLM APIs",
         value=st.session_state["use_real_executor"],
         help=(
-            "ON = call real LLM APIs (requires keys above).  "
-            "OFF = use simulated stub responses for demo/testing."
+            "ON = call real LLM APIs (keys required).  "
+            "OFF = simulated stub responses for demo/testing."
         ),
         key="sb_exec_toggle",
     )
@@ -271,7 +325,7 @@ def _render_sidebar() -> None:
 
     st.sidebar.markdown("---")
 
-    # ── New Project ──────────────────────────────────────────────────
+    # ── New / Demo / Load ────────────────────────────────────────────
     with st.sidebar.expander(
         "\U00002795  New Project", expanded=_project() is None
     ):
@@ -288,15 +342,30 @@ def _render_sidebar() -> None:
             key="sb_new_desc",
             placeholder="Brief description of this project...",
         )
-        if st.button("Create Project", use_container_width=True):
-            proj = Project(name=new_name, description=new_desc)
-            proj.add_tab("Tab 1")
-            save_project(proj)
-            _set_project(proj)
-            _flash(f"Created project \"{proj.name}\"")
-            st.rerun()
+        c_create, c_demo = st.columns(2)
+        with c_create:
+            if st.button("Create", use_container_width=True, help="Create a blank project"):
+                proj = Project(name=new_name, description=new_desc)
+                proj.add_tab("Tab 1")
+                save_project(proj)
+                _set_project(proj)
+                _flash(f"Created project \"{proj.name}\"")
+                st.rerun()
+        with c_demo:
+            if st.button(
+                "Demo",
+                use_container_width=True,
+                help="Load sample 'Life Tracker' with 5 tabs and 13 action items",
+            ):
+                proj = create_sample_project()
+                save_project(proj)
+                _set_project(proj)
+                _flash(
+                    "Loaded demo project \"Life Tracker\" with 5 tabs "
+                    "and 13 action items."
+                )
+                st.rerun()
 
-    # ── Load Project ─────────────────────────────────────────────────
     with st.sidebar.expander("\U0001f4c2  Load Project"):
         uploaded = st.file_uploader(
             "Upload a project JSON file",
@@ -341,7 +410,7 @@ def _render_sidebar() -> None:
                             st.session_state.project = None
                         st.rerun()
 
-    # ── Save / Download ──────────────────────────────────────────────
+    # ── Save / Export ────────────────────────────────────────────────
     proj = _project()
     if proj:
         st.sidebar.markdown("---")
@@ -376,6 +445,7 @@ def _render_sidebar() -> None:
                 else AVAILABLE_LLMS[0]
             ),
             key="sb_int_llm",
+            help="LLM used when 'Run All Tabs' integrates results.",
         )
         proj.integrator_prompt = st.sidebar.text_area(
             "Integrator prompt",
@@ -391,6 +461,7 @@ def _render_sidebar() -> None:
             "\u25b6  Run All Tabs",
             type="primary",
             use_container_width=True,
+            help="Execute every tab in sequence, then integrate the results.",
         ):
             engine = _engine()
             progress_bar = st.sidebar.progress(0, text="Starting...")
@@ -399,22 +470,25 @@ def _render_sidebar() -> None:
                 frac = min(step / max(total, 1), 1.0)
                 progress_bar.progress(frac, text=f"[{step}/{total}] {label}")
 
+            logger.info("Running all tabs for project '%s'", proj.name)
             engine.run_project(proj, on_progress=_project_progress)
             progress_bar.progress(1.0, text="Done!")
             save_project(proj)
             st.session_state.run_complete = True
-            _flash("Workflow complete \u2014 all tabs executed and integrated!")
+            _flash("Workflow complete - all tabs executed and integrated!")
             st.rerun()
 
 
-# ── Subtask renderer ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+#  SUBTASK RENDERER
+# ══════════════════════════════════════════════════════════════════════
 
 
 def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
     label = f"Action Item {index + 1}"
     if sub.prompt:
         preview = sub.prompt[:40] + ("..." if len(sub.prompt) > 40 else "")
-        label += f" \u2014 {preview}"
+        label += f" - {preview}"
     if sub.output:
         label += "  \u2705"
 
@@ -439,16 +513,26 @@ def _render_subtask(sub: SubTask, index: int, tab: SequenceTab) -> None:
                 "\U0001f5d1 Remove",
                 key=f"subrm_{sub.id}",
                 use_container_width=True,
+                help="Remove this action item (can be undone)",
             ):
+                # Push undo before removing
+                _push_undo("remove_subtask", {
+                    "tab_id": tab.id,
+                    "position": index,
+                    "subtask_data": sub.model_dump(),
+                })
                 tab.subtasks = [s for s in tab.subtasks if s.id != sub.id]
+                logger.info("Removed subtask %s from tab %s", sub.id, tab.title)
                 st.rerun()
 
         if sub.output:
             st.markdown("**Output:**")
-            _render_output(sub.output, key_prefix=f"subout_{sub.id}")
+            _render_output(sub.output)
 
 
-# ── Sequence-tab editor ──────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+#  SEQUENCE TAB EDITOR
+# ══════════════════════════════════════════════════════════════════════
 
 
 def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
@@ -467,9 +551,15 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             "\U0001f5d1 Remove Tab",
             key=f"rmtab_{tab.id}",
             use_container_width=True,
+            help="Remove this tab (can be undone)",
         ):
+            _push_undo("remove_tab", {
+                "position": tab_idx,
+                "tab_data": tab.model_dump(),
+            })
             proj.remove_tab(tab.id)
             save_project(proj)
+            logger.info("Removed tab '%s'", tab.title)
             st.rerun()
 
     st.markdown(
@@ -499,17 +589,21 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             tab.tools, key_prefix=f"tab_{tab.id}", label="Tools for this tab"
         )
 
-    # Main prompt output
     if tab.output:
         with st.expander("Main prompt output", expanded=True):
-            _render_output(tab.output, key_prefix=f"tabout_{tab.id}")
+            _render_output(tab.output)
 
     # ── Action Items ─────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("##### Action Items")
 
     if not tab.subtasks:
-        st.caption("No action items yet. Click below to add one.")
+        st.info(
+            "No action items yet. Action items are sub-tasks that execute "
+            "after the main prompt. Each one receives the accumulated context "
+            "from all prior steps.",
+            icon="\U0001f4a1",
+        )
 
     for si, sub in enumerate(tab.subtasks):
         _render_subtask(sub, si, tab)
@@ -531,9 +625,9 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             key=f"runtab_{tab.id}",
             type="primary",
             use_container_width=True,
+            help="Execute main prompt + all action items in sequence.",
         ):
             engine = _engine()
-            total_steps = 1 + len(tab.subtasks)
             progress_bar = st.progress(0, text=f"Running \"{tab.title}\"...")
             status_text = st.empty()
 
@@ -542,6 +636,7 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
                 progress_bar.progress(frac, text=f"[{step + 1}/{total}] {label}")
                 status_text.caption(f"Executing: {label}")
 
+            logger.info("Running tab '%s'", tab.title)
             engine.run_tab(tab, on_progress=_tab_progress)
             progress_bar.progress(1.0, text="Done!")
             status_text.empty()
@@ -553,6 +648,7 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             "\u21bb Clear",
             key=f"cleartab_{tab.id}",
             use_container_width=True,
+            help="Clear all outputs from this tab.",
         ):
             tab.output = None
             for sub in tab.subtasks:
@@ -560,7 +656,100 @@ def _render_sequence_tab(tab: SequenceTab, tab_idx: int, proj: Project) -> None:
             st.rerun()
 
 
-# ── Main area ────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+#  COMPILE PROJECT PANEL
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _render_compile_panel(proj: Project) -> None:
+    """Render the 'Compile Project' section below the tabs."""
+    tabs_ready = proj.tabs_with_output()
+
+    st.markdown("---")
+    st.subheader("\U0001f4d6 Compile Project")
+
+    if not tabs_ready:
+        st.info(
+            "Run at least one tab first. The Compile step takes existing "
+            "tab outputs and produces a polished Markdown document.",
+            icon="\u2139\ufe0f",
+        )
+        return
+
+    st.caption(
+        f"{len(tabs_ready)} of {len(proj.tabs)} tabs have output. "
+        "Compile will merge them into a final document."
+    )
+
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        proj.compile_llm = _llm_selector(
+            proj.compile_llm,
+            key_prefix="compile",
+            label="Compile with",
+        )
+    with c2:
+        proj.compile_prompt = st.text_area(
+            "Compile prompt",
+            value=proj.compile_prompt,
+            height=100,
+            key="compile_prompt",
+            help="Use {outputs} as placeholder. The LLM receives all tab outputs here.",
+        )
+
+    if st.button(
+        "\U0001f4d6  Compile Project",
+        type="primary",
+        use_container_width=True,
+        help="Merge all tab outputs into a polished Markdown document.",
+    ):
+        engine = _engine()
+        progress_bar = st.progress(0, text="Compiling...")
+
+        def _compile_progress(step: int, total: int, label: str) -> None:
+            frac = min((step + 1) / max(total, 1), 1.0)
+            progress_bar.progress(frac, text=label)
+
+        logger.info("Compiling project '%s'", proj.name)
+        engine.compile_project(proj, on_progress=_compile_progress)
+        progress_bar.progress(1.0, text="Done!")
+        save_project(proj)
+        _flash("Project compiled successfully!")
+        st.rerun()
+
+    # Display compiled result
+    if proj.compiled_result:
+        st.markdown("---")
+        st.markdown("##### Compiled Document")
+
+        # Render as proper Markdown
+        with st.container():
+            st.markdown(
+                f'<div class="compile-block">{proj.compiled_result}</div>'
+                if st.session_state.use_real_executor is False
+                else "",
+                unsafe_allow_html=True,
+            )
+            # When using real APIs the output is actual markdown; render natively
+            if st.session_state.use_real_executor:
+                st.markdown(proj.compiled_result)
+            else:
+                _render_output(proj.compiled_result)
+
+        # Download as Markdown
+        md_bytes = proj.compiled_result.encode("utf-8")
+        st.download_button(
+            "\u2b07 Download as Markdown",
+            data=BytesIO(md_bytes),
+            file_name=f"{proj.name.replace(' ', '_').lower()}_compiled.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  MAIN AREA
+# ══════════════════════════════════════════════════════════════════════
 
 
 def _render_main() -> None:
@@ -571,6 +760,25 @@ def _render_main() -> None:
         st.success(st.session_state.status_msg)
         st.session_state.status_msg = None
 
+    # Undo bar
+    if st.session_state.undo_stack:
+        last = st.session_state.undo_stack[-1]
+        action_desc = (
+            f"Removed tab \"{last['payload'].get('tab_data', {}).get('title', '?')}\""
+            if last["action"] == "remove_tab"
+            else f"Removed action item from tab"
+        )
+        if st.button(
+            f"\u21a9 Undo: {action_desc}",
+            key="undo_btn",
+            use_container_width=True,
+        ):
+            entry = _pop_undo()
+            if entry:
+                msg = _apply_undo(entry)
+                _flash(f"Undo: {msg}")
+                st.rerun()
+
     # ── Landing page ─────────────────────────────────────────────────
     if proj is None:
         st.title("\U0001f372 Gumbo")
@@ -580,31 +788,48 @@ def _render_main() -> None:
             "items, pick an LLM and tools for each step, then run everything "
             "in sequence and integrate the results."
         )
-        st.info(
-            "\u2190 Use the sidebar to **create** a new project or **load** "
-            "an existing one."
-        )
 
-        with st.expander("How it works"):
+        col_start, col_demo = st.columns(2)
+        with col_start:
+            st.info(
+                "\u2190 Use the sidebar to **create** a new project or "
+                "**load** an existing one.",
+                icon="\U0001f449",
+            )
+        with col_demo:
+            if st.button(
+                "\U0001f680 Load Demo Project",
+                use_container_width=True,
+                help="Load 'Life Tracker' with 5 tabs and 13 action items",
+            ):
+                proj = create_sample_project()
+                save_project(proj)
+                _set_project(proj)
+                _flash("Loaded demo: Life Tracker (5 tabs, 13 action items)")
+                st.rerun()
+
+        with st.expander("How it works", expanded=True):
             st.markdown(
                 "1. **Add your API keys** in the sidebar under "
                 "\U0001f511 API Keys.  Toggle *Use real LLM APIs* on.\n"
-                "2. **Create** a project and give it a name.\n"
-                "3. **Add sequence tabs** \u2014 each tab represents a major step "
-                "in your workflow (e.g. *Research*, *Draft*, *Review*).\n"
-                "4. For each tab, write a **main prompt** and optionally add "
-                "**action items** (sub-tasks).\n"
-                "5. **Pick an LLM** (Claude-3, GPT-4, Grok, or Custom) "
-                "and **select tools** for every prompt.  Tools run in "
-                "sequence before the LLM call:\n"
-                "   - **Web Search** \u2014 Google Custom Search or DuckDuckGo\n"
-                "   - **Code Execution** \u2014 runs Python in a subprocess\n"
-                "   - **Browse Page** \u2014 fetches & extracts text from URLs\n"
-                "   - **Image Viewer** \u2014 acknowledges image references\n"
+                "2. **Create** a project (or click **Demo** to load a sample).\n"
+                "3. **Add sequence tabs** \u2014 each represents a major step "
+                "(e.g. *Research*, *Draft*, *Review*).\n"
+                "4. Write a **main prompt** per tab and add **action items** "
+                "(sub-tasks that chain context).\n"
+                "5. **Pick an LLM** (Claude-3, GPT-4, Grok, Custom) "
+                "and **select tools** per prompt:\n"
+                "   - **Web Search** \u2014 Google CSE or DuckDuckGo\n"
+                "   - **Code Execution** \u2014 sandboxed Python subprocess\n"
+                "   - **Browse Page** \u2014 fetches & extracts web page text\n"
+                "   - **Image Viewer** \u2014 image reference for LLM context\n"
                 "   - **PDF Search** \u2014 PDF extraction (placeholder)\n"
-                "6. Click **Run Tab** to execute a single tab, or **Run All "
-                "Tabs** in the sidebar.  Progress bars show each step.\n"
-                "7. **Save** to disk or **Export** as JSON to share."
+                "6. **Run Tab** executes one tab. **Run All Tabs** runs "
+                "everything and integrates.\n"
+                "7. **Compile Project** merges all outputs into a polished "
+                "Markdown document you can download.\n"
+                "8. **Save** / **Export** your project at any time. "
+                "**Undo** restores accidentally removed tabs or items."
             )
         return
 
@@ -618,9 +843,16 @@ def _render_main() -> None:
     )
     st.title(proj.name)
 
-    # Execution mode indicator
+    # Status bar
     mode = "Real APIs" if st.session_state.use_real_executor else "Simulated (stub)"
-    st.caption(f"Execution mode: **{mode}**")
+    n_tabs = len(proj.tabs)
+    n_subs = sum(len(t.subtasks) for t in proj.tabs)
+    n_done = sum(1 for t in proj.tabs if t.output)
+    st.caption(
+        f"Execution: **{mode}** &nbsp;|&nbsp; "
+        f"Tabs: **{n_done}/{n_tabs}** run &nbsp;|&nbsp; "
+        f"Action items: **{n_subs}** total"
+    )
 
     if proj.description:
         proj.description = st.text_input(
@@ -647,7 +879,14 @@ def _render_main() -> None:
     if not proj.tabs:
         proj.add_tab("Tab 1")
 
-    tab_labels = [t.title for t in proj.tabs] + ["\u2795 New Tab"]
+    tab_labels = []
+    for t in proj.tabs:
+        lbl = t.title
+        if t.output:
+            lbl += " \u2705"
+        tab_labels.append(lbl)
+    tab_labels.append("\u2795 New Tab")
+
     ui_tabs = st.tabs(tab_labels)
 
     for idx in range(len(proj.tabs)):
@@ -656,29 +895,36 @@ def _render_main() -> None:
 
     with ui_tabs[-1]:
         st.markdown("### Add a Sequence Tab")
+        st.info(
+            "Each tab represents a step in your workflow. Tabs execute in "
+            "order and their outputs feed into the final integration.",
+            icon="\U0001f4a1",
+        )
         new_title = st.text_input(
             "Tab title",
             value="New Tab",
             key="new_tab_input",
-            placeholder="e.g. Health, Finance, Goals...",
+            placeholder="e.g. Research, Draft, Review...",
         )
         if st.button("Add Sequence Tab", use_container_width=True):
             proj.add_tab(new_title)
             save_project(proj)
             st.rerun()
 
-    # ── Integrated result ────────────────────────────────────────────
+    # ── Integrated result (from Run All) ─────────────────────────────
     if st.session_state.run_complete and proj.final_result:
         st.markdown("---")
-        st.subheader("\U0001f4cb Integrated Project Result")
-        _render_output(proj.final_result, key_prefix="final")
-
+        st.subheader("\U0001f4cb Integrated Result")
+        _render_output(proj.final_result)
         st.download_button(
-            "\u2b07 Download Result",
+            "\u2b07 Download Integrated Result",
             data=proj.final_result.encode("utf-8"),
-            file_name=f"{proj.name.replace(' ', '_').lower()}_result.txt",
+            file_name=f"{proj.name.replace(' ', '_').lower()}_integrated.txt",
             mime="text/plain",
         )
+
+    # ── Compile Project panel ────────────────────────────────────────
+    _render_compile_panel(proj)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

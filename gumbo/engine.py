@@ -10,8 +10,8 @@ task (tool pipeline + LLM call).  Two executors ship out of the box:
 
 Progress callbacks
 ------------------
-``run_tab`` and ``run_project`` accept an optional ``on_progress``
-callback of the form ``(step_index, total_steps, label) -> None``.
+``run_tab``, ``run_project``, and ``compile_project`` accept an optional
+``on_progress`` callback of the form ``(step_index, total_steps, label) -> None``.
 The UI uses this to drive ``st.progress`` bars.
 """
 
@@ -133,11 +133,7 @@ class WorkflowEngine:
         tab: SequenceTab,
         on_progress: Optional[ProgressFn] = None,
     ) -> str:
-        """Run a single tab: main prompt first, then subtasks in order.
-
-        Each subtask receives the accumulated context from the main prompt
-        and all prior subtasks, so later steps can build on earlier results.
-        """
+        """Run a single tab: main prompt first, then subtasks in order."""
         total = 1 + len(tab.subtasks)
 
         if on_progress:
@@ -158,7 +154,7 @@ class WorkflowEngine:
 
         return context
 
-    # -- full project run --------------------------------------------
+    # -- full project run (execute + integrate) -----------------------
 
     def run_project(
         self,
@@ -169,7 +165,6 @@ class WorkflowEngine:
         all_outputs: list[str] = []
         tabs = sorted(project.tabs, key=lambda t: t.position)
 
-        # Total steps: every (main + subtasks) across all tabs + 1 integration
         total = sum(1 + len(t.subtasks) for t in tabs) + 1
         step = 0
 
@@ -194,7 +189,6 @@ class WorkflowEngine:
 
             all_outputs.append(f"## {tab.title}\n{context}")
 
-        # Integration step
         if on_progress:
             on_progress(step, total, "Integrating results...")
 
@@ -205,3 +199,50 @@ class WorkflowEngine:
         project.final_result = final.text
         project.touch()
         return final.text
+
+    # -- compile (integration-only, uses existing tab outputs) --------
+
+    def compile_project(
+        self,
+        project: Project,
+        on_progress: Optional[ProgressFn] = None,
+    ) -> str:
+        """Compile existing tab outputs into a polished Markdown document.
+
+        Unlike ``run_project``, this does NOT re-run any tabs.  It takes
+        whatever outputs already exist and sends them through the compile
+        prompt to produce a final document.
+        """
+        tabs_with_output = project.tabs_with_output()
+
+        if not tabs_with_output:
+            return "[Compile] No tab outputs found. Run tabs first."
+
+        if on_progress:
+            on_progress(0, 2, "Gathering tab outputs...")
+
+        sections: list[str] = []
+        for tab in sorted(tabs_with_output, key=lambda t: t.position):
+            section = f"## {tab.title}\n\n{tab.output}"
+            # Include subtask outputs
+            for i, sub in enumerate(tab.subtasks):
+                if sub.output:
+                    sub_label = sub.prompt[:50] if sub.prompt else f"Action item {i + 1}"
+                    section += f"\n\n### {sub_label}\n\n{sub.output}"
+            sections.append(section)
+
+        combined = "\n\n---\n\n".join(sections)
+        compile_prompt = project.compile_prompt.format(outputs=combined)
+
+        if on_progress:
+            on_progress(1, 2, f"Compiling with {project.compile_llm}...")
+
+        result = self.run_task(compile_prompt, project.compile_llm, [])
+        project.compiled_result = result.text
+        project.touch()
+
+        logger.info(
+            "Project compiled: %d tabs, %d chars output",
+            len(tabs_with_output), len(result.text),
+        )
+        return result.text

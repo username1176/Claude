@@ -5,9 +5,10 @@ This module provides:
     final LLM call.  Each tool enriches the accumulated context.
   - **LLM client wrappers** for Anthropic (Claude), OpenAI (GPT-4),
     xAI (Grok), and a stub for "Custom" models.
-  - A top-level ``execute_task`` function that wires tools → LLM into a
+  - A top-level ``execute_task`` function that wires tools -> LLM into a
     single pipeline, suitable for use as the ``executor`` in
     ``WorkflowEngine``.
+  - Automatic **retry with exponential backoff** on transient API errors.
 
 API keys
 --------
@@ -20,26 +21,32 @@ Keys are resolved in order:
 
 from __future__ import annotations
 
-import html as html_lib
-import io
 import logging
 import os
 import subprocess
 import sys
 import tempfile
-import textwrap
-from contextlib import redirect_stdout, redirect_stderr
+import time
 from typing import Any, Callable, Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
 
+# ── Constants ────────────────────────────────────────────────────────
+
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 2          # seconds: 2, 4, 8
+RETRY_BACKOFF_MAX = 10          # cap
+
+# Transient HTTP codes worth retrying
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
 # ── Key helpers ──────────────────────────────────────────────────────
 
 
 def _get_key(name: str) -> str | None:
-    """Resolve an API key from session-state → secrets → env."""
+    """Resolve an API key from session-state -> secrets -> env."""
     try:
         import streamlit as st
 
@@ -57,14 +64,63 @@ def _get_key(name: str) -> str | None:
     return os.environ.get(name)
 
 
+# ── Retry decorator ─────────────────────────────────────────────────
+
+
+def _with_retries(fn: Callable[..., str], *args: Any, **kwargs: Any) -> str:
+    """Call *fn* with automatic retry + exponential backoff on transient errors.
+
+    Retries on:
+      - requests / httpx connection errors
+      - HTTP 429 / 5xx from the provider
+      - Anthropic / OpenAI rate-limit or overloaded exceptions
+    """
+    last_exc: Exception | None = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            exc_str = str(exc).lower()
+            exc_type = type(exc).__name__
+
+            retryable = (
+                "rate" in exc_str
+                or "overloaded" in exc_str
+                or "timeout" in exc_str
+                or "connection" in exc_str
+                or "502" in exc_str
+                or "503" in exc_str
+                or "529" in exc_str
+                or exc_type in ("RateLimitError", "APIConnectionError",
+                                "InternalServerError", "APIStatusError")
+            )
+
+            if not retryable or attempt == MAX_RETRIES:
+                logger.error(
+                    "LLM call failed (attempt %d/%d, non-retryable): %s",
+                    attempt, MAX_RETRIES, exc,
+                )
+                raise
+
+            wait = min(RETRY_BACKOFF_BASE ** attempt, RETRY_BACKOFF_MAX)
+            logger.warning(
+                "LLM call failed (attempt %d/%d), retrying in %ds: %s",
+                attempt, MAX_RETRIES, wait, exc,
+            )
+            time.sleep(wait)
+
+    raise last_exc  # type: ignore[misc]   # unreachable but satisfies type checker
+
+
 # ── Tool implementations ────────────────────────────────────────────
 
 
 def tool_web_search(query: str) -> str:
     """Web search via Google Custom Search JSON API.
 
-    Requires ``GOOGLE_CSE_API_KEY`` and ``GOOGLE_CSE_CX`` keys.
-    Falls back to a DuckDuckGo HTML scrape if keys are absent.
+    Falls back to DuckDuckGo instant-answer if Google keys are absent.
     """
     api_key = _get_key("GOOGLE_CSE_API_KEY")
     cx = _get_key("GOOGLE_CSE_CX")
@@ -90,9 +146,9 @@ def tool_web_search(query: str) -> str:
                 else f"[Web Search] No results found for: {query}"
             )
         except Exception as exc:
-            logger.warning("Google CSE failed: %s", exc)
+            logger.warning("Google CSE failed, falling back to DuckDuckGo: %s", exc)
 
-    # Fallback: DuckDuckGo instant-answer API (no key needed)
+    # Fallback: DuckDuckGo instant-answer API
     try:
         resp = requests.get(
             "https://api.duckduckgo.com/",
@@ -103,7 +159,7 @@ def tool_web_search(query: str) -> str:
         data = resp.json()
         abstract = data.get("AbstractText", "")
         related = data.get("RelatedTopics", [])
-        parts = [f"[Web Search — DuckDuckGo] Query: {query}"]
+        parts = [f"[Web Search - DuckDuckGo] Query: {query}"]
         if abstract:
             parts.append(f"Summary: {abstract}")
         for topic in related[:5]:
@@ -117,12 +173,7 @@ def tool_web_search(query: str) -> str:
 
 
 def tool_code_execution(code: str) -> str:
-    """Execute Python code in a subprocess sandbox.
-
-    - Timeout: 30 seconds
-    - Captures stdout + stderr
-    - No network/filesystem restrictions beyond the subprocess boundary
-    """
+    """Execute Python code in a subprocess sandbox (30s timeout)."""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False
     ) as tmp:
@@ -160,11 +211,7 @@ def tool_code_execution(code: str) -> str:
 
 
 def tool_browse_page(url: str) -> str:
-    """Fetch a web page and extract readable text.
-
-    Uses BeautifulSoup to strip tags and return the first ~3000 chars
-    of body text.
-    """
+    """Fetch a web page and extract readable text via BeautifulSoup."""
     url = url.strip()
     if not url.startswith(("http://", "https://")):
         return f"[Browse Page] Invalid URL: {url}"
@@ -183,12 +230,10 @@ def tool_browse_page(url: str) -> str:
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        # Remove script/style
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
     except ImportError:
-        # Crude fallback if bs4 missing at runtime
         text = resp.text
 
     truncated = text[:3000]
@@ -199,11 +244,7 @@ def tool_browse_page(url: str) -> str:
 
 
 def tool_image_viewer(description: str) -> str:
-    """Describe / acknowledge an image reference.
-
-    In a full implementation this would call a vision model.  For now it
-    returns a structured placeholder that the LLM can reason about.
-    """
+    """Acknowledge an image reference for LLM context."""
     return (
         f"[Image Viewer] Image reference noted: {description[:200]}\n"
         "The image has been acknowledged and will be included in the LLM "
@@ -212,12 +253,7 @@ def tool_image_viewer(description: str) -> str:
 
 
 def tool_pdf_search(query: str) -> str:
-    """Search / extract text from a PDF.
-
-    In a full implementation this would use a PDF parsing library (e.g.
-    PyMuPDF) and vector search.  For now it returns a structured
-    placeholder.
-    """
+    """PDF search / extraction placeholder."""
     return (
         f"[PDF Search] Query: {query}\n"
         "PDF search capability is registered.  When a PDF URL or path is "
@@ -245,11 +281,6 @@ def run_tool_pipeline(
 ) -> tuple[str, list[dict[str, str]]]:
     """Run tools sequentially, accumulating context.
 
-    Args:
-        prompt: The original task prompt (used as input to the first tool).
-        tools:  Ordered list of tool names to execute.
-        on_step: Optional ``(step_index, total_steps, tool_name)`` callback.
-
     Returns:
         (enriched_context, tool_step_records)
     """
@@ -266,15 +297,15 @@ def run_tool_pipeline(
 
         fn = TOOL_REGISTRY.get(tool_name)
         if fn is None:
-            output = f"[{tool_name}] Unknown tool — skipped."
+            output = f"[{tool_name}] Unknown tool - skipped."
         else:
-            # Feed the tool either the raw prompt (first step) or the
-            # accumulated context (subsequent steps).
             tool_input = prompt if i == 0 else f"{prompt}\n\nPrior tool output:\n{accumulated}"
             try:
                 output = fn(tool_input)
+                logger.info("Tool '%s' completed (%d chars)", tool_name, len(output))
             except Exception as exc:
                 output = f"[{tool_name}] Error: {exc}"
+                logger.error("Tool '%s' failed: %s", tool_name, exc)
 
         steps.append({"tool": tool_name, "output": output})
         accumulated += output + "\n\n"
@@ -282,15 +313,14 @@ def run_tool_pipeline(
     return accumulated.strip(), steps
 
 
-# ── LLM client wrappers ─────────────────────────────────────────────
+# ── LLM client wrappers (with retry) ────────────────────────────────
 
 
-def _call_claude(
+def _call_claude_raw(
     prompt: str,
     context: str | None = None,
     model: str = "claude-sonnet-4-20250514",
 ) -> str:
-    """Call the Anthropic Messages API."""
     api_key = _get_key("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -318,12 +348,11 @@ def _call_claude(
     return response.content[0].text
 
 
-def _call_openai(
+def _call_openai_raw(
     prompt: str,
     context: str | None = None,
     model: str = "gpt-4",
 ) -> str:
-    """Call the OpenAI Chat Completions API."""
     api_key = _get_key("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -348,12 +377,11 @@ def _call_openai(
     return response.choices[0].message.content or ""
 
 
-def _call_grok(
+def _call_grok_raw(
     prompt: str,
     context: str | None = None,
     model: str = "grok-3-latest",
 ) -> str:
-    """Call the xAI Grok API (OpenAI-compatible endpoint)."""
     api_key = _get_key("XAI_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -386,19 +414,30 @@ def _call_custom(
     context: str | None = None,
     model: str = "custom-model",
 ) -> str:
-    """Placeholder for a custom/self-hosted LLM.
-
-    Returns a clearly-labelled stub so the user knows where to wire in
-    their own endpoint.
-    """
+    """Placeholder for a custom/self-hosted LLM."""
     ctx_note = f"\nContext: {context[:200]}..." if context else ""
     return (
-        f"[Custom LLM — {model}]\n"
+        f"[Custom LLM - {model}]\n"
         f"Prompt: {prompt[:300]}{'...' if len(prompt) > 300 else ''}"
         f"{ctx_note}\n\n"
         "To connect a real model, edit `_call_custom` in "
         "gumbo/gumbo_executors.py and point it at your API endpoint."
     )
+
+
+# ── Public wrappers with retry ──────────────────────────────────────
+
+
+def _call_claude(prompt: str, context: str | None = None, **kw: Any) -> str:
+    return _with_retries(_call_claude_raw, prompt, context, **kw)
+
+
+def _call_openai(prompt: str, context: str | None = None, **kw: Any) -> str:
+    return _with_retries(_call_openai_raw, prompt, context, **kw)
+
+
+def _call_grok(prompt: str, context: str | None = None, **kw: Any) -> str:
+    return _with_retries(_call_grok_raw, prompt, context, **kw)
 
 
 LLM_DISPATCH: dict[str, Callable[..., str]] = {
@@ -414,15 +453,11 @@ def call_llm(
     prompt: str,
     context: str | None = None,
 ) -> str:
-    """Dispatch to the correct LLM client.
-
-    If ``llm_name`` is not a known preset, it's treated as a custom model
-    name and routed to the custom stub.
-    """
+    """Dispatch to the correct LLM client (with retry)."""
     fn = LLM_DISPATCH.get(llm_name, _call_custom)
     if llm_name not in LLM_DISPATCH:
-        # Treat as a custom model identifier
         return fn(prompt, context, model=llm_name)
+    logger.info("Calling LLM '%s'", llm_name)
     return fn(prompt, context)
 
 
@@ -436,23 +471,16 @@ def execute_task(
     context: str | None = None,
     on_tool_step: Callable[[int, int, str], None] | None = None,
 ) -> "TaskResult":
-    """Run the full tool-pipeline → LLM call for a single task.
+    """Run the full tool-pipeline -> LLM call for a single task.
 
-    This function has the same signature as ``engine.ExecutorFn`` (plus
-    the optional callback) so it can be used directly as:
-
-        WorkflowEngine(executor=execute_task)
-
-    The execution order is:
+    Execution order:
       1. Run each selected tool in sequence on the prompt.
-         Tool outputs accumulate into an ``enriched_context`` string.
-      2. Combine the original prompt + tool outputs + any prior context
-         into a single LLM prompt.
+      2. Combine original prompt + tool outputs + prior context.
       3. Call the selected LLM and return its response.
     """
     from gumbo.engine import TaskResult, ToolStepResult
 
-    # ── 1. Tool pipeline ─────────────────────────────────────────────
+    # 1. Tool pipeline
     tool_context, tool_steps_raw = run_tool_pipeline(
         prompt, tools, on_step=on_tool_step
     )
@@ -461,7 +489,7 @@ def execute_task(
         ToolStepResult(tool=s["tool"], text=s["output"]) for s in tool_steps_raw
     ]
 
-    # ── 2. Build enriched prompt ─────────────────────────────────────
+    # 2. Build enriched prompt
     parts: list[str] = []
     if context:
         parts.append(f"Prior context:\n{context}")
@@ -470,9 +498,10 @@ def execute_task(
     parts.append(f"Task:\n{prompt}")
     enriched_prompt = "\n\n---\n\n".join(parts)
 
-    # ── 3. LLM call ──────────────────────────────────────────────────
+    # 3. LLM call (retry handled inside call_llm)
     try:
         llm_response = call_llm(llm, enriched_prompt, context=None)
+        logger.info("Task completed with %s (%d chars)", llm, len(llm_response))
         return TaskResult(
             text=llm_response,
             llm_used=llm,
@@ -481,7 +510,7 @@ def execute_task(
         )
     except Exception as exc:
         error_msg = str(exc)
-        # Build a useful fallback output so the workflow doesn't silently fail
+        logger.error("Task failed with %s: %s", llm, error_msg)
         fallback = (
             f"[Error calling {llm}] {error_msg}\n\n"
             "Tool outputs collected before the error:\n"
