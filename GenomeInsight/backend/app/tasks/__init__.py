@@ -1,0 +1,8 @@
+"""Celery task modules.
+
+Import all task submodules here so that ``celery_worker.py``'s
+``import app.tasks`` causes Celery to discover all ``@shared_task``
+functions.
+"""
+
+from app.tasks.genome_tasks import run_genome_analysis  # noqa: F401

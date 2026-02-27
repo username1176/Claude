@@ -1,10 +1,18 @@
 """Genome upload and analysis endpoints."""
 
+import json
+
 from flask import Blueprint, current_app, g, jsonify, request
 
 from app.extensions import db
 from app.models.audit import AuditLog
-from app.models.genome import GenomeAnalysis, GenomeUpload, HealthRecommendation
+from app.models.genome import (
+    GenomeAnalysis,
+    GenomeUpload,
+    HealthRecommendation,
+    Variant,
+    VariantAnnotation,
+)
 from app.api.decorators import login_required
 from app.services.file_upload import UploadValidationError, save_upload
 
@@ -63,13 +71,25 @@ def upload_genome():
         file_size_bytes=file_size,
     )
     db.session.add(upload)
+    db.session.flush()  # Populate upload.id before referencing it
 
-    # Create a queued analysis record (Celery task dispatch will go here)
     analysis = GenomeAnalysis(upload_id=upload.id, status="queued")
     db.session.add(analysis)
 
     _audit("upload_genome", resource_type="GenomeUpload", resource_id=upload.id)
     db.session.commit()
+
+    # Dispatch Celery background task
+    celery_task_id = None
+    try:
+        from app.tasks.genome_tasks import run_genome_analysis
+
+        task = run_genome_analysis.delay(analysis.id)
+        celery_task_id = task.id
+    except Exception:
+        # If Celery/Redis is unavailable, analysis stays "queued"
+        # and can be retried via POST /analyze endpoint below.
+        pass
 
     return (
         jsonify(
@@ -77,6 +97,7 @@ def upload_genome():
                 "upload_id": upload.id,
                 "analysis_id": analysis.id,
                 "status": upload.status,
+                "task_id": celery_task_id,
                 "message": "File received. Analysis will begin shortly.",
             }
         ),
@@ -284,5 +305,164 @@ def get_recommendations(analysis_id: str):
                 }
                 for r in recs
             ],
+        }
+    )
+
+
+# ── Re-trigger analysis ─────────────────────────────────────────────────────
+
+
+@genome_bp.route("/uploads/<upload_id>/analyze", methods=["POST"])
+@login_required
+def trigger_analysis(upload_id: str):
+    """Manually (re)trigger analysis for an upload.
+
+    Useful if the initial Celery dispatch failed or the analysis errored.
+    """
+    upload = GenomeUpload.query.filter_by(
+        id=upload_id, user_id=g.current_user.id
+    ).first()
+    if not upload:
+        return jsonify({"error": "Genome upload not found."}), 404
+
+    analysis = upload.analysis
+    if not analysis:
+        analysis = GenomeAnalysis(upload_id=upload.id, status="queued")
+        db.session.add(analysis)
+        db.session.commit()
+
+    if analysis.status == "running":
+        return jsonify({"error": "Analysis is already running.", "analysis_id": analysis.id}), 409
+
+    # Reset status for re-run
+    analysis.status = "queued"
+    analysis.error_message = None
+    db.session.commit()
+
+    celery_task_id = None
+    try:
+        from app.tasks.genome_tasks import run_genome_analysis
+
+        task = run_genome_analysis.delay(analysis.id)
+        celery_task_id = task.id
+    except Exception:
+        pass
+
+    _audit("trigger_analysis", resource_type="GenomeAnalysis", resource_id=analysis.id)
+    db.session.commit()
+
+    return jsonify(
+        {
+            "analysis_id": analysis.id,
+            "status": analysis.status,
+            "task_id": celery_task_id,
+            "message": "Analysis (re)queued.",
+        }
+    )
+
+
+# ── Variants (paginated) ────────────────────────────────────────────────────
+
+
+@genome_bp.route("/analysis/<analysis_id>/variants", methods=["GET"])
+@login_required
+def get_variants(analysis_id: str):
+    """Return paginated variant list with their annotations."""
+    analysis = (
+        GenomeAnalysis.query.join(GenomeUpload)
+        .filter(
+            GenomeAnalysis.id == analysis_id,
+            GenomeUpload.user_id == g.current_user.id,
+        )
+        .first()
+    )
+    if not analysis:
+        return jsonify({"error": "Analysis not found."}), 404
+
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    rsid_filter = request.args.get("rsid")
+    chromosome_filter = request.args.get("chromosome")
+
+    query = Variant.query.filter_by(analysis_id=analysis_id)
+    if rsid_filter:
+        query = query.filter(Variant.rsid == rsid_filter)
+    if chromosome_filter:
+        query = query.filter(Variant.chromosome == chromosome_filter)
+
+    query = query.order_by(Variant.chromosome, Variant.position)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    items = []
+    for v in pagination.items:
+        annotations = [
+            {
+                "source": a.source,
+                "gene_symbol": a.gene_symbol,
+                "consequence": a.consequence,
+                "clinical_significance": a.clinical_significance,
+                "condition_name": a.condition_name,
+                "trait_association": a.trait_association,
+                "odds_ratio": a.odds_ratio,
+                "pubmed_ids": a.pubmed_ids,
+            }
+            for a in v.annotations
+        ]
+        items.append(
+            {
+                "id": v.id,
+                "rsid": v.rsid,
+                "chromosome": v.chromosome,
+                "position": v.position,
+                "ref_allele": v.ref_allele,
+                "alt_allele": v.alt_allele,
+                "genotype": v.genotype,
+                "quality": v.quality,
+                "annotations": annotations,
+            }
+        )
+
+    return jsonify(
+        {
+            "analysis_id": analysis_id,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "total": pagination.total,
+            "pages": pagination.pages,
+            "variants": items,
+        }
+    )
+
+
+# ── Risk summary ─────────────────────────────────────────────────────────────
+
+
+@genome_bp.route("/analysis/<analysis_id>/risks", methods=["GET"])
+@login_required
+def get_risks(analysis_id: str):
+    """Return the risk category summary for an analysis."""
+    analysis = (
+        GenomeAnalysis.query.join(GenomeUpload)
+        .filter(
+            GenomeAnalysis.id == analysis_id,
+            GenomeUpload.user_id == g.current_user.id,
+        )
+        .first()
+    )
+    if not analysis:
+        return jsonify({"error": "Analysis not found."}), 404
+
+    risk_data = {}
+    if analysis.risk_summary_json:
+        try:
+            risk_data = json.loads(analysis.risk_summary_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return jsonify(
+        {
+            "analysis_id": analysis_id,
+            "status": analysis.status,
+            "risk_categories": risk_data,
         }
     )
