@@ -259,7 +259,7 @@ def _generate_insights_for_user(user_id: str) -> int:
     # Load microbiome profile for cross-domain insights
     microbiome_profile = _load_user_microbiome_profile(user_id)
 
-    # Generate cross-domain insights
+    # Generate per-domain cross-domain insights
     insights = generate_cross_domain_insights(
         wearable_summaries=wearable_summaries,
         user_variants=user_variants,
@@ -267,6 +267,30 @@ def _generate_insights_for_user(user_id: str) -> int:
         epigenetic_overlays=epigenetic_overlays,
         microbiome_profile=microbiome_profile,
     )
+
+    # Run unified multi-domain correlator for higher-order insights
+    from app.utils.correlator import run_unified_correlation
+    unified = run_unified_correlation(
+        user_variants=user_variants,
+        blood_markers=blood_markers,
+        wearable_summaries=wearable_summaries,
+        microbiome_profile=microbiome_profile,
+        epigenetic_overlays=epigenetic_overlays,
+    )
+
+    # Merge unified insights (avoid duplicates by title)
+    existing_titles = {i.title for i in insights}
+    from app.utils.wearable_client import CrossDomainInsight
+    for u in unified:
+        if u.title not in existing_titles:
+            insights.append(CrossDomainInsight(
+                title=u.title,
+                body=u.body,
+                confidence=u.confidence,
+                insight_type="daily",
+                data_sources=u.data_sources,
+            ))
+            existing_titles.add(u.title)
 
     # Persist insights
     count = 0
