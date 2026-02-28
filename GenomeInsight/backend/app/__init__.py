@@ -71,10 +71,12 @@ def create_app(config_name: str | None = None):
     from app.api.auth import auth_bp
     from app.api.genome import genome_bp
     from app.api.blood import blood_bp
+    from app.api.epigenetics import epigenetics_bp
 
     flask_app.register_blueprint(auth_bp)
     flask_app.register_blueprint(genome_bp)
     flask_app.register_blueprint(blood_bp)
+    flask_app.register_blueprint(epigenetics_bp)
 
     # Create tables (use Alembic migrations in production instead)
     with flask_app.app_context():

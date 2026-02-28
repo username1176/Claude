@@ -35,6 +35,9 @@ class User(db.Model):
     blood_uploads = relationship(
         "BloodUpload", back_populates="user", cascade="all, delete-orphan"
     )
+    epigenetic_uploads = relationship(
+        "EpigeneticUpload", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

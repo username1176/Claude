@@ -1,0 +1,4 @@
+track name=H3K27ac_peaks description="H3K27ac ChIP-seq peaks"
+chr1	11785000	11786000	H3K27ac_peak1	45.5	+
+chr1	11795000	11800000	H3K27ac_peak2	22.3	+
+chr17	7668000	7669000	H3K27ac_peak3	18.7	-

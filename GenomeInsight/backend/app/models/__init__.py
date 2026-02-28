@@ -9,4 +9,9 @@ from app.models.genome import (  # noqa: F401
     HealthRecommendation,
 )
 from app.models.blood import BloodUpload, BloodResult  # noqa: F401
+from app.models.epigenetics import (  # noqa: F401
+    EpigeneticUpload,
+    EpigeneticAnalysis,
+    EpigeneticRegion,
+)
 from app.models.audit import AuditLog  # noqa: F401
