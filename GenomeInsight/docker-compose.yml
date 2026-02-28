@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    container_name: genomeinsight-api
+    env_file: .env
+    environment:
+      - FLASK_ENV=production
+      - SQLALCHEMY_DATABASE_URI=sqlite:///data/db/genomeinsight.db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost,http://localhost:80
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: /api/v1
+    container_name: genomeinsight-web
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: genomeinsight-redis
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  celery:
+    build: ./backend
+    container_name: genomeinsight-celery
+    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2
+    env_file: .env
+    environment:
+      - FLASK_ENV=production
+      - SQLALCHEMY_DATABASE_URI=sqlite:///data/db/genomeinsight.db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      - redis
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  redis-data:

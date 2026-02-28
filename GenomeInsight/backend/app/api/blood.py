@@ -1,11 +1,13 @@
 """Blood test upload, parsing, results, trend, and change-analysis endpoints."""
 
+import os
+import re
 from datetime import date
 
 from flask import Blueprint, current_app, g, jsonify, request
 from sqlalchemy import func
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.audit import AuditLog
 from app.models.blood import BloodResult, BloodUpload
 from app.api.decorators import login_required
@@ -14,6 +16,12 @@ from app.services.file_upload import UploadValidationError, save_upload
 blood_bp = Blueprint("blood", __name__, url_prefix="/api/v1/blood")
 
 ALLOWED_FILE_TYPES = {"pdf", "csv"}
+
+
+def _sanitize_filename(name: str) -> str:
+    name = os.path.basename(name)
+    name = re.sub(r"[^\w.\-]", "_", name)
+    return name or "upload"
 
 
 def _audit(action: str, **kwargs):
@@ -44,6 +52,7 @@ def _result_to_dict(r: BloodResult) -> dict:
 
 
 @blood_bp.route("/upload", methods=["POST"])
+@limiter.limit("10 per hour")
 @login_required
 def upload_blood():
     """Accept a PDF or CSV blood-test file, encrypt it, parse markers, and
@@ -93,7 +102,7 @@ def upload_blood():
 
     upload = BloodUpload(
         user_id=user.id,
-        filename_original=file.filename,
+        filename_original=_sanitize_filename(file.filename),
         file_path_encrypted=str(encrypted_path),
         file_type=extension,
         test_date=test_date,

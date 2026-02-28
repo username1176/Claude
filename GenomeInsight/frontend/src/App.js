@@ -19,6 +19,8 @@ import LogoutIcon from "@mui/icons-material/Logout";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
+import DisclaimerModal from "./components/DisclaimerModal";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import Dashboard from "./components/Dashboard";
@@ -160,14 +162,17 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
-        <AuthProvider>
-          <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-            <NavBar />
-            <AppRoutes />
-          </Box>
-        </AuthProvider>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AuthProvider>
+            <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+              <NavBar />
+              <AppRoutes />
+              <DisclaimerModal />
+            </Box>
+          </AuthProvider>
+        </BrowserRouter>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

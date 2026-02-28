@@ -118,6 +118,8 @@ def login():
 
     return jsonify(
         {
+            "user_id": user.id,
+            "email": user.email,
             "access_token": access,
             "refresh_token": refresh,
             "token_type": "Bearer",
@@ -129,14 +131,20 @@ def login():
 
 
 @auth_bp.route("/refresh", methods=["POST"])
-@limiter.limit("30 per minute")
+@limiter.limit("10 per minute")
 def refresh():
-    data = request.get_json(silent=True)
-    if not data or "refresh_token" not in data:
-        return jsonify({"error": "refresh_token is required"}), 400
+    # Accept token from Authorization header (frontend) or JSON body
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        refresh_token = auth_header[7:]
+    else:
+        data = request.get_json(silent=True)
+        if not data or "refresh_token" not in data:
+            return jsonify({"error": "refresh_token is required"}), 400
+        refresh_token = data["refresh_token"]
 
     try:
-        payload = decode_token(data["refresh_token"])
+        payload = decode_token(refresh_token)
     except pyjwt.ExpiredSignatureError:
         return jsonify({"error": "Refresh token has expired"}), 401
     except pyjwt.PyJWTError:

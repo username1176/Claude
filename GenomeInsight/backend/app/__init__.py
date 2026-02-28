@@ -5,8 +5,11 @@ be imported without Flask installed (e.g. by the Streamlit front-end that
 only needs ``app.services``).
 """
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(config_name: str | None = None):
@@ -17,7 +20,7 @@ def create_app(config_name: str | None = None):
                      Defaults to the ``FLASK_ENV`` environment variable,
                      falling back to ``"development"``.
     """
-    from flask import Flask, jsonify
+    from flask import Flask, g, jsonify, request
 
     from app.config import ProductionConfig, config_by_name
     from app.extensions import cors, db, limiter
@@ -32,6 +35,9 @@ def create_app(config_name: str | None = None):
     flask_app = Flask(__name__)
     flask_app.config.from_object(config_cls)
 
+    # Flask request size limit (defense-in-depth before file_upload.py check)
+    flask_app.config["MAX_CONTENT_LENGTH"] = flask_app.config["MAX_VCF_SIZE_BYTES"]
+
     # Ensure data directories exist
     upload_dir: Path = flask_app.config["UPLOAD_DIR"]
     (upload_dir / "tmp").mkdir(parents=True, exist_ok=True)
@@ -45,7 +51,21 @@ def create_app(config_name: str | None = None):
     # Initialize extensions
     db.init_app(flask_app)
     limiter.init_app(flask_app)
-    cors.init_app(flask_app, resources={r"/api/*": {"origins": "*"}})
+
+    # CORS — allow the React frontend with credentials
+    cors_origins = os.environ.get(
+        "CORS_ORIGINS", "http://localhost:3000"
+    ).split(",")
+    cors.init_app(
+        flask_app,
+        resources={r"/api/*": {
+            "origins": cors_origins,
+            "supports_credentials": True,
+            "allow_headers": ["Content-Type", "Authorization"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "max_age": 3600,
+        }},
+    )
 
     # Register blueprints
     from app.api.auth import auth_bp
@@ -61,7 +81,31 @@ def create_app(config_name: str | None = None):
         from app import models as _models  # noqa: F401
         db.create_all()
 
-    # Global error handlers
+    # ── Security headers ─────────────────────────────────────────────────
+    @flask_app.after_request
+    def set_security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        if config_name == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+    # ── Request logging for 4xx/5xx ──────────────────────────────────────
+    @flask_app.after_request
+    def log_errors(response):
+        if response.status_code >= 400:
+            user = getattr(g, "current_user", None)
+            uid = user.id if user else "anon"
+            logger.warning(
+                "%s %s -> %d (user=%s)",
+                request.method, request.path, response.status_code, uid,
+            )
+        return response
+
+    # ── Global error handlers ────────────────────────────────────────────
     @flask_app.errorhandler(404)
     def not_found(_e):
         return jsonify({"error": "Resource not found."}), 404
@@ -69,6 +113,10 @@ def create_app(config_name: str | None = None):
     @flask_app.errorhandler(405)
     def method_not_allowed(_e):
         return jsonify({"error": "Method not allowed."}), 405
+
+    @flask_app.errorhandler(413)
+    def request_too_large(_e):
+        return jsonify({"error": "File too large."}), 413
 
     @flask_app.errorhandler(429)
     def rate_limited(_e):

@@ -1,10 +1,12 @@
 """Genome upload and analysis endpoints."""
 
 import json
+import os
+import re
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.audit import AuditLog
 from app.models.genome import (
     GenomeAnalysis,
@@ -21,6 +23,13 @@ genome_bp = Blueprint("genome", __name__, url_prefix="/api/v1/genome")
 ALLOWED_SOURCES = {"23andme", "ancestry", "nebula", "other"}
 
 
+def _sanitize_filename(name: str) -> str:
+    """Strip path traversal and non-alphanumeric chars from a filename."""
+    name = os.path.basename(name)
+    name = re.sub(r"[^\w.\-]", "_", name)
+    return name or "upload"
+
+
 def _audit(action: str, **kwargs):
     log = AuditLog(
         user_id=g.current_user.id,
@@ -35,6 +44,7 @@ def _audit(action: str, **kwargs):
 
 
 @genome_bp.route("/upload", methods=["POST"])
+@limiter.limit("5 per hour")
 @login_required
 def upload_genome():
     if "file" not in request.files:
@@ -63,7 +73,7 @@ def upload_genome():
 
     upload = GenomeUpload(
         user_id=user.id,
-        filename_original=file.filename,
+        filename_original=_sanitize_filename(file.filename),
         file_path_encrypted=str(encrypted_path),
         file_hash_sha256=sha256_hex,
         source_service=source,
