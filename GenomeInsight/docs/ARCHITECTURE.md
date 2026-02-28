@@ -1,8 +1,8 @@
 # GenomeInsight — Application Architecture
 
 > **Status**: Design Phase
-> **Version**: 0.1.0
-> **Last Updated**: 2026-02-27
+> **Version**: 0.2.0
+> **Last Updated**: 2026-02-28
 
 ---
 
@@ -16,141 +16,205 @@
 6. [Genome Database Integration Plan](#6-genome-database-integration-plan)
 7. [Blood Test Processing Pipeline](#7-blood-test-processing-pipeline)
 8. [AI-Driven Insights Engine](#8-ai-driven-insights-engine)
-9. [Deployment Architecture](#9-deployment-architecture)
-10. [Ethical and Legal Considerations](#10-ethical-and-legal-considerations)
+9. [Epigenetics Module](#9-epigenetics-module)
+10. [Wearables Integration](#10-wearables-integration)
+11. [Cross-Domain Correlation Engine](#11-cross-domain-correlation-engine)
+12. [Deployment Architecture](#12-deployment-architecture)
+13. [Ethical and Legal Considerations](#13-ethical-and-legal-considerations)
 
 ---
 
 ## 1. Overview
 
 GenomeInsight is a privacy-first web application that enables users to upload
-genome data (VCF files from services like 23andMe, AncestryDNA, Nebula Genomics)
-and routine blood test results, then receive personalized health insights
-powered by public genome research databases and AI-driven natural language
-reports.
+genome data (VCF files from services like 23andMe, AncestryDNA, Nebula Genomics),
+routine blood test results, and epigenetic data files, then connect wearable
+health devices — all to receive personalized, multi-layered health insights
+powered by public genome research databases, epigenomics reference maps,
+wearable analytics, and AI-driven natural language reports.
 
 ### Core Value Proposition
 
 - **Genome Analysis**: Parse user variants, cross-reference against ClinVar,
-  Ensembl, GWAS Catalog, and NCBI to surface disease risk associations,
-  pharmacogenomic interactions, and trait predictions.
+  Ensembl, GWAS Catalog, NCBI Entrez, gnomAD, and PharmGKB to surface disease
+  risk associations, pharmacogenomic interactions, variant population
+  frequencies, and trait predictions.
+- **Epigenetics Layer**: Upload BED files (histone marks from ChIP-seq) or
+  methylation array data (IDAT/CSV). Cross-reference against ENCODE and
+  Roadmap Epigenomics datasets to show how epigenetic modifications at
+  regulatory regions interact with the user's genetic variants — e.g.,
+  "Methylation at the BRCA1 promoter may reduce expression of this risk gene."
 - **Blood Test Tracking**: Upload blood panels over time, visualize trends,
   and correlate improvements or regressions with genome-informed lifestyle
   changes.
+- **Wearables Integration**: Connect 400+ devices (Fitbit, Garmin, Apple
+  Health, Oura, Whoop, etc.) via unified wearable APIs (Terra / ROOK).
+  Pull daily activity, sleep, heart rate, HRV, and SpO2 data. Correlate
+  with genome, epigenetic, and blood data — e.g., "Increased daily steps
+  correlated with improved glucose control, consistent with your TCF7L2
+  diabetes-risk variant."
 - **Actionable Tweaks**: Provide small, evidence-backed lifestyle suggestions
   (dietary changes, exercise tips, supplement recommendations) grounded in
-  the user's specific genetic profile.
+  the user's specific genetic profile, epigenetic context, and real-time
+  wearable data.
 
 ### Non-Goals (v1)
 
 - Clinical-grade diagnostic reporting (this is informational only).
 - Direct integration with electronic health record (EHR) systems.
 - Real-time genetic sequencing or raw-read processing.
+- Direct IDAT binary parsing (users pre-convert to CSV methylation beta
+  values using external tools like minfi or sesame).
 
 ---
 
 ## 2. High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          CLIENT TIER                                │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                   React SPA (Vite)                            │  │
-│  │                                                               │  │
-│  │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────────────┐  │  │
-│  │  │  Auth    │ │ Upload   │ │ Dashboard │ │   Reports     │  │  │
-│  │  │  Pages   │ │ Wizard   │ │ (Charts)  │ │  (AI-gen)     │  │  │
-│  │  └──────────┘ └──────────┘ └───────────┘ └───────────────┘  │  │
-│  │                                                               │  │
-│  │  UI Libraries: Recharts, React-Dropzone, React-Router        │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                              │ HTTPS (TLS 1.3)                      │
-└──────────────────────────────┼──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT TIER                                  │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                       React SPA (MUI)                              │  │
+│  │                                                                    │  │
+│  │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │  │
+│  │  │  Auth   │ │ Upload  │ │Dashboard │ │ Reports  │ │Wearable  │ │  │
+│  │  │  Pages  │ │ Wizard  │ │(Charts)  │ │(AI-gen)  │ │Connect   │ │  │
+│  │  └─────────┘ └─────────┘ └──────────┘ └──────────┘ └──────────┘ │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐  │  │
+│  │  │ Epigenetics  │ │ Daily       │ │ DisclaimerModal +        │  │  │
+│  │  │ Upload/View  │ │ Insights    │ │ ErrorBoundary            │  │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────────────────┘  │  │
+│  │                                                                    │  │
+│  │  Libraries: Recharts, React-Dropzone, React-Router, Axios        │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              │ HTTPS (TLS 1.3)                           │
+└──────────────────────────────┼───────────────────────────────────────────┘
                                │
                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        API / APPLICATION TIER                        │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                 Nginx Reverse Proxy                            │  │
-│  │          (TLS termination, rate limiting, CORS)                │  │
-│  └──────────────────────┬─────────────────────────────────────────┘  │
-│                         │                                            │
-│  ┌──────────────────────▼─────────────────────────────────────────┐  │
-│  │              Flask Application (Gunicorn)                      │  │
-│  │                                                                │  │
-│  │  ┌───────────┐ ┌──────────────┐ ┌──────────────────────────┐  │  │
-│  │  │ Auth      │ │ Upload &     │ │ Analysis &               │  │  │
-│  │  │ Module    │ │ Parse Module │ │ Reporting Module         │  │  │
-│  │  │ (JWT +    │ │ (VCF, PDF,   │ │ (Variant lookup,        │  │  │
-│  │  │  bcrypt)  │ │  CSV parse)  │ │  risk scoring,          │  │  │
-│  │  └───────────┘ └──────────────┘ │  recommendations)       │  │  │
-│  │                                  └──────────────────────────┘  │  │
-│  │  ┌──────────────────────────────────────────────────────────┐  │  │
-│  │  │            Shared Services                               │  │  │
-│  │  │  - File encryption (AES-256-GCM)                         │  │  │
-│  │  │  - Input validation & sanitization                       │  │  │
-│  │  │  - Rate limiter (Flask-Limiter)                          │  │  │
-│  │  │  - Logging / audit trail                                 │  │  │
-│  │  └──────────────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                         │                                            │
-│  ┌──────────────────────▼─────────────────────────────────────────┐  │
-│  │              Celery Worker Pool (Redis broker)                 │  │
-│  │                                                                │  │
-│  │  ┌────────────────┐ ┌────────────────┐ ┌───────────────────┐  │  │
-│  │  │ genome_analyze │ │ blood_parse    │ │ report_generate   │  │  │
-│  │  │ (VCF parse,    │ │ (PDF/CSV       │ │ (AI NLG,         │  │  │
-│  │  │  API queries)  │ │  extraction)   │ │  compile report)  │  │  │
-│  │  └────────────────┘ └────────────────┘ └───────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        API / APPLICATION TIER                             │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                 Nginx Reverse Proxy                                 │  │
+│  │          (TLS termination, rate limiting, CORS)                    │  │
+│  └──────────────────────┬─────────────────────────────────────────────┘  │
+│                         │                                                │
+│  ┌──────────────────────▼─────────────────────────────────────────────┐  │
+│  │              Flask Application (Gunicorn)                          │  │
+│  │                                                                    │  │
+│  │  ┌───────────┐ ┌──────────────┐ ┌──────────────────────────────┐  │  │
+│  │  │ Auth      │ │ Upload &     │ │ Analysis &                   │  │  │
+│  │  │ Module    │ │ Parse Module │ │ Reporting Module             │  │  │
+│  │  │ (JWT +    │ │ (VCF, PDF,   │ │ (Variant lookup, risk       │  │  │
+│  │  │  bcrypt)  │ │  CSV, BED)   │ │  scoring, recommendations)  │  │  │
+│  │  └───────────┘ └──────────────┘ └──────────────────────────────┘  │  │
+│  │                                                                    │  │
+│  │  ┌──────────────────┐ ┌───────────────────┐ ┌──────────────────┐  │  │
+│  │  │ Epigenetics      │ │ Wearables OAuth   │ │ Cross-Domain     │  │  │
+│  │  │ Module           │ │ + Data Sync       │ │ Correlation      │  │  │
+│  │  │ (BED/CSV parse,  │ │ (Terra/ROOK,      │ │ Engine           │  │  │
+│  │  │  ENCODE queries) │ │  daily pulls)     │ │ (genome+epi+     │  │  │
+│  │  └──────────────────┘ └───────────────────┘ │  blood+wearable) │  │  │
+│  │                                              └──────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │  │
+│  │  │            Shared Services                                   │  │  │
+│  │  │  - File encryption (AES-256-GCM)                             │  │  │
+│  │  │  - Input validation & sanitization                           │  │  │
+│  │  │  - Rate limiter (Flask-Limiter)                              │  │  │
+│  │  │  - OAuth2 token manager (wearables)                          │  │  │
+│  │  │  - Logging / audit trail                                     │  │  │
+│  │  └──────────────────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                         │                                                │
+│  ┌──────────────────────▼─────────────────────────────────────────────┐  │
+│  │              Celery Worker Pool (Redis broker)                     │  │
+│  │                                                                    │  │
+│  │  ┌───────────────┐ ┌──────────────┐ ┌──────────────────────────┐  │  │
+│  │  │genome_analyze │ │ blood_parse  │ │ report_generate          │  │  │
+│  │  │(VCF parse,    │ │ (PDF/CSV     │ │ (AI NLG, compile report) │  │  │
+│  │  │ API queries)  │ │  extraction) │ │                          │  │  │
+│  │  └───────────────┘ └──────────────┘ └──────────────────────────┘  │  │
+│  │                                                                    │  │
+│  │  ┌───────────────┐ ┌──────────────┐ ┌──────────────────────────┐  │  │
+│  │  │epigenetics_   │ │ wearable_    │ │ daily_insight_generate   │  │  │
+│  │  │analyze (BED/  │ │ sync (pull   │ │ (cross-domain analysis,  │  │  │
+│  │  │ CSV parse,    │ │  daily data  │ │  personalized tweaks)    │  │  │
+│  │  │ ENCODE query) │ │  from Terra) │ │                          │  │  │
+│  │  └───────────────┘ └──────────────┘ └──────────────────────────┘  │  │
+│  │                                                                    │  │
+│  │  Celery Beat (scheduler): wearable_sync every 6 hours             │  │
+│  │                            daily_insight at 07:00 user-local       │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                          DATA TIER                                    │
-│                                                                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐ │
-│  │   SQLite     │  │   Redis      │  │  Encrypted File Store     │ │
-│  │  (Primary    │  │  (Celery     │  │  (Local disk or S3-       │ │
-│  │   database)  │  │   broker +   │  │   compatible, AES-256     │ │
-│  │              │  │   cache)     │  │   at rest)                │ │
-│  └──────────────┘  └──────────────┘  └────────────────────────────┘ │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          DATA TIER                                        │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────────┐ │
+│  │   SQLite     │  │   Redis      │  │  Encrypted File Store         │ │
+│  │  (Primary    │  │  (Celery     │  │  (Local disk or S3-           │ │
+│  │   database)  │  │   broker +   │  │   compatible, AES-256         │ │
+│  │              │  │   cache)     │  │   at rest)                    │ │
+│  └──────────────┘  └──────────────┘  └────────────────────────────────┘ │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
                                │
                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     EXTERNAL SERVICES                                 │
-│                                                                      │
-│  ┌────────────┐ ┌────────────┐ ┌──────────┐ ┌────────────────────┐ │
-│  │  Ensembl   │ │  ClinVar   │ │  GWAS    │ │  NCBI (dbSNP,    │ │
-│  │  REST API  │ │  E-Utils   │ │  Catalog │ │  PubMed, Gene)   │ │
-│  └────────────┘ └────────────┘ └──────────┘ └────────────────────┘ │
-│                                                                      │
-│  ┌──────────────────┐  ┌──────────────────────────────────────────┐ │
-│  │  OpenAI API      │  │  PharmGKB (pharmacogenomics, optional)  │ │
-│  │  (GPT for NLG)   │  │                                         │ │
-│  └──────────────────┘  └──────────────────────────────────────────┘ │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     EXTERNAL SERVICES                                     │
+│                                                                          │
+│  ── Genome Databases ──────────────────────────────────────────────────  │
+│  ┌───────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
+│  │ Ensembl   │ │ ClinVar   │ │  GWAS    │ │  gnomAD  │ │  NCBI     │  │
+│  │ VEP API   │ │ E-Utils   │ │ Catalog  │ │  API     │ │ Entrez    │  │
+│  └───────────┘ └───────────┘ └──────────┘ └──────────┘ └───────────┘  │
+│  ┌───────────┐                                                         │
+│  │ PharmGKB  │                                                         │
+│  │ API       │                                                         │
+│  └───────────┘                                                         │
+│                                                                          │
+│  ── Epigenetics Databases ─────────────────────────────────────────────  │
+│  ┌────────────────────┐  ┌─────────────────────────────────────────┐   │
+│  │  ENCODE REST API   │  │  Roadmap Epigenomics                   │   │
+│  │  (encodeproject.   │  │  (NIH / WashU EpiGenome Browser)       │   │
+│  │   org)             │  │  (egg2.wustl.edu)                      │   │
+│  └────────────────────┘  └─────────────────────────────────────────┘   │
+│                                                                          │
+│  ── Wearables / Health ────────────────────────────────────────────────  │
+│  ┌────────────────────┐  ┌─────────────────────────────────────────┐   │
+│  │  Terra API         │  │  ROOK API                              │   │
+│  │  (tryterra.co)     │  │  (tryrook.io)                          │   │
+│  │  400+ devices      │  │  Alternative unified wearable API      │   │
+│  └────────────────────┘  └─────────────────────────────────────────┘   │
+│                                                                          │
+│  ── AI ────────────────────────────────────────────────────────────────  │
+│  ┌──────────────────┐                                                   │
+│  │  OpenAI API      │                                                   │
+│  │  (GPT for NLG)   │                                                   │
+│  └──────────────────┘                                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
 | Component | Technology | Role |
 |-----------|-----------|------|
-| **Frontend SPA** | React 18+, Vite, Recharts | User interface, file uploads, dashboard visualizations |
+| **Frontend SPA** | React 18+, MUI, Recharts | User interface, file uploads, wearable connect, dashboard |
 | **Reverse Proxy** | Nginx | TLS termination, rate limiting, static asset serving |
-| **API Server** | Flask + Gunicorn | REST API, authentication, request validation, orchestration |
-| **Task Queue** | Celery + Redis | Async genome analysis, blood test parsing, report generation |
-| **Database** | SQLite (WAL mode) | User data, analysis results, blood test history |
+| **API Server** | Flask + Gunicorn | REST API, auth, validation, OAuth2 flows, orchestration |
+| **Task Queue** | Celery + Redis | Async genome/epigenetics analysis, wearable sync, reports |
+| **Scheduler** | Celery Beat | Periodic wearable data pulls, daily insight generation |
+| **Database** | SQLite (WAL mode) | User data, analysis results, wearable data, epigenetics |
 | **Cache/Broker** | Redis | Celery message broker, API response caching, session store |
-| **File Store** | Encrypted disk (or S3) | Raw uploads (VCF, PDF, CSV) encrypted at rest |
-| **External APIs** | Ensembl, ClinVar, NCBI, GWAS | Variant annotation, disease associations, research data |
-| **AI Engine** | OpenAI API (or self-hosted) | Natural language report generation |
+| **File Store** | Encrypted disk (or S3) | Raw uploads (VCF, PDF, CSV, BED) encrypted at rest |
+| **Genome APIs** | Ensembl, ClinVar, NCBI, GWAS, gnomAD, PharmGKB | Variant annotation, frequencies, pharmacogenomics |
+| **Epigenetics APIs** | ENCODE, Roadmap Epigenomics | Methylation/histone reference data for user regions |
+| **Wearable APIs** | Terra / ROOK | Unified access to 400+ wearable devices via OAuth2 |
+| **AI Engine** | OpenAI API (or self-hosted) | Natural language report generation, daily insights |
 
 ### Request Flow Example: Genome Upload & Analysis
 
@@ -173,12 +237,16 @@ User uploads VCF file
                                    3. Batch query Ensembl VEP for consequences
                                    4. Query ClinVar for clinical significance
                                    5. Query GWAS Catalog for trait associations
-                                   6. Score risk categories (cardiovascular,
+                                   6. Query gnomAD for population allele frequencies
+                                   7. Query NCBI Entrez for gene details
+                                   8. Query PharmGKB for drug-gene interactions
+                                   9. Score risk categories (cardiovascular,
                                       metabolic, neurological, pharmacogenomic)
-                                   7. Generate lifestyle recommendations
-                                   8. Call AI engine for natural language report
-                                   9. Store results → GenomeAnalysis record
-                                  10. Update status: complete
+                                  10. Cross-reference epigenetics data (if available)
+                                  11. Generate lifestyle recommendations
+                                  12. Call AI engine for natural language report
+                                  13. Store results → GenomeAnalysis record
+                                  14. Update status: complete
                                             │
                                             ▼
 [React] ◀──GET /api/v1/genome/analysis/{id}── [Flask API]
@@ -265,6 +333,77 @@ User uploads VCF file
        │ ip_address               │
        │ timestamp                │
        └──────────────────────────┘
+
+  User
+   │
+   │              ┌───────────────────────┐       ┌──────────────────────────┐
+   ├──── 1:N ────▶│  EpigeneticUpload     │──1:N─▶│  EpigeneticRegion        │
+   │              ├───────────────────────┤       ├──────────────────────────┤
+   │              │ id (PK)               │       │ id (PK)                  │
+   │              │ user_id (FK)          │       │ upload_id (FK)           │
+   │              │ filename_original     │       │ chromosome               │
+   │              │ file_path_encrypted   │       │ start_pos                │
+   │              │ file_type (bed/csv)   │       │ end_pos                  │
+   │              │ data_type (histone/   │       │ feature_type (promoter/  │
+   │              │   methylation)        │       │   enhancer/insulator/    │
+   │              │ assay_type            │       │   gene_body)             │
+   │              │ metrics_json          │       │ nearest_gene             │
+   │              │ status                │       │ methylation_beta         │
+   │              │ uploaded_at           │       │ histone_mark             │
+   │              │ file_size_bytes       │       │ signal_value             │
+   │              └───────────────────────┘       │ encode_overlap_json      │
+   │                                              │ roadmap_overlap_json     │
+   │                                              │ interpretation           │
+   │                                              └──────────────────────────┘
+   │
+   │              ┌───────────────────────┐
+   ├──── 1:N ────▶│  WearableConnection   │
+   │              ├───────────────────────┤
+   │              │ id (PK)               │
+   │              │ user_id (FK)          │
+   │              │ provider (fitbit/     │
+   │              │   garmin/apple/oura/  │
+   │              │   whoop/...)          │
+   │              │ terra_user_id         │
+   │              │ access_token_enc      │
+   │              │ refresh_token_enc     │
+   │              │ token_expires_at      │
+   │              │ scopes                │
+   │              │ connected_at          │
+   │              │ last_sync_at          │
+   │              │ status (active/       │
+   │              │   expired/revoked)    │
+   │              └───────────────────────┘
+   │
+   │              ┌───────────────────────┐
+   ├──── 1:N ────▶│  DailyWearableData    │
+   │              ├───────────────────────┤
+   │              │ id (PK)               │
+   │              │ user_id (FK)          │
+   │              │ connection_id (FK)    │
+   │              │ date                  │
+   │              │ data_type (activity/  │
+   │              │   sleep/heart_rate/   │
+   │              │   hrv/spo2/stress)    │
+   │              │ data_json             │
+   │              │ summary_json          │
+   │              │ fetched_at            │
+   │              └───────────────────────┘
+   │
+   │              ┌───────────────────────┐
+   └──── 1:N ────▶│  DailyInsight         │
+                  ├───────────────────────┤
+                  │ id (PK)               │
+                  │ user_id (FK)          │
+                  │ date                  │
+                  │ insight_type (daily/  │
+                  │   weekly/alert)       │
+                  │ title                 │
+                  │ body                  │
+                  │ data_sources_json     │
+                  │ confidence            │
+                  │ generated_at          │
+                  └───────────────────────┘
 ```
 
 ### Model Details
@@ -393,6 +532,112 @@ User uploads VCF file
 | resource_id | UUID | | |
 | ip_address | VARCHAR(45) | | IPv4/IPv6 |
 | timestamp | DATETIME | NOT NULL | UTC |
+
+#### EpigeneticUpload
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| id | UUID | PK | |
+| user_id | UUID | FK → User | |
+| filename_original | VARCHAR(255) | NOT NULL | User-facing name |
+| file_path_encrypted | VARCHAR(512) | NOT NULL | Path to AES-encrypted file on disk |
+| file_type | VARCHAR(10) | NOT NULL | `bed` or `csv` |
+| data_type | VARCHAR(20) | NOT NULL | `histone` (BED from ChIP-seq) or `methylation` (CSV beta values) |
+| assay_type | VARCHAR(50) | | e.g., "H3K27ac", "H3K4me3", "WGBS", "450K", "EPIC" |
+| tissue_type | VARCHAR(100) | | e.g., "blood", "saliva" — for Roadmap matching |
+| metrics_json | TEXT | | Aggregated summary: global methylation avg, region counts, etc. |
+| status | VARCHAR(20) | NOT NULL | uploaded / parsing / analyzing / complete / error |
+| uploaded_at | DATETIME | NOT NULL | UTC |
+| file_size_bytes | INTEGER | NOT NULL | For quota enforcement |
+
+#### EpigeneticRegion
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| id | UUID | PK | |
+| upload_id | UUID | FK → EpigeneticUpload | |
+| chromosome | VARCHAR(5) | NOT NULL | e.g., "chr1", "chrX" |
+| start_pos | INTEGER | NOT NULL | Genomic start coordinate |
+| end_pos | INTEGER | NOT NULL | Genomic end coordinate |
+| feature_type | VARCHAR(20) | | `promoter`, `enhancer`, `insulator`, `gene_body`, `intergenic` |
+| nearest_gene | VARCHAR(50) | | Gene symbol for nearest/overlapping gene |
+| methylation_beta | FLOAT | | Beta value 0.0-1.0 (methylation data only) |
+| histone_mark | VARCHAR(20) | | e.g., "H3K27ac" (histone data only) |
+| signal_value | FLOAT | | ChIP-seq signal intensity (histone data only) |
+| encode_overlap_json | TEXT | | Overlapping ENCODE experiments metadata |
+| roadmap_overlap_json | TEXT | | Overlapping Roadmap Epigenomics annotations |
+| interpretation | TEXT | | AI/rule-based interpretation string |
+
+*Index*: (upload_id), (chromosome, start_pos, end_pos), (nearest_gene)
+
+#### WearableConnection
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| id | UUID | PK | |
+| user_id | UUID | FK → User | |
+| provider | VARCHAR(50) | NOT NULL | e.g., "fitbit", "garmin", "apple_health", "oura", "whoop" |
+| terra_user_id | VARCHAR(100) | UNIQUE | User ID in Terra/ROOK system |
+| access_token_enc | BLOB | NOT NULL | OAuth2 access token, AES-encrypted with user DEK |
+| refresh_token_enc | BLOB | NOT NULL | OAuth2 refresh token, AES-encrypted with user DEK |
+| token_expires_at | DATETIME | | When the current access token expires |
+| scopes | TEXT | | Granted OAuth scopes (comma-separated) |
+| connected_at | DATETIME | NOT NULL | When user authorized the connection |
+| last_sync_at | DATETIME | | Timestamp of most recent data pull |
+| status | VARCHAR(20) | NOT NULL | `active`, `expired`, `revoked`, `error` |
+
+*Index*: (user_id, provider) UNIQUE — one connection per provider per user
+
+#### DailyWearableData
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| id | UUID | PK | |
+| user_id | UUID | FK → User | |
+| connection_id | UUID | FK → WearableConnection | |
+| date | DATE | NOT NULL | Calendar date for this data point |
+| data_type | VARCHAR(20) | NOT NULL | `activity`, `sleep`, `heart_rate`, `hrv`, `spo2`, `stress` |
+| data_json | TEXT | NOT NULL | Raw data payload from Terra/ROOK (JSON) |
+| summary_json | TEXT | | Computed summaries: daily steps, avg HR, sleep score, etc. |
+| fetched_at | DATETIME | NOT NULL | When this data was pulled from the provider |
+
+*Index*: (user_id, date, data_type) UNIQUE — one record per user per date per type
+
+Example `summary_json` for activity:
+```json
+{
+  "steps": 8432,
+  "active_minutes": 45,
+  "calories_burned": 2150,
+  "distance_km": 6.2,
+  "floors_climbed": 8
+}
+```
+
+Example `summary_json` for sleep:
+```json
+{
+  "total_sleep_minutes": 420,
+  "deep_sleep_minutes": 90,
+  "rem_sleep_minutes": 105,
+  "light_sleep_minutes": 225,
+  "awakenings": 3,
+  "sleep_score": 82,
+  "bedtime": "23:15",
+  "wake_time": "06:15"
+}
+```
+
+#### DailyInsight
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| id | UUID | PK | |
+| user_id | UUID | FK → User | |
+| date | DATE | NOT NULL | Calendar date for this insight |
+| insight_type | VARCHAR(20) | NOT NULL | `daily`, `weekly`, `alert` |
+| title | VARCHAR(200) | NOT NULL | Short insight title |
+| body | TEXT | NOT NULL | Full insight text with evidence references |
+| data_sources_json | TEXT | | JSON: which data layers contributed (genome, epigenetics, blood, wearable) |
+| confidence | VARCHAR(10) | NOT NULL | low / medium / high |
+| generated_at | DATETIME | NOT NULL | When insight was produced |
+
+*Index*: (user_id, date) — for timeline queries
 
 ---
 
@@ -638,6 +883,164 @@ Response (200):
 }
 ```
 
+### 4.6 Epigenetics Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/epigenetics/upload` | Yes | Upload BED or CSV methylation file |
+| GET | `/epigenetics/uploads` | Yes | List user's epigenetic uploads |
+| GET | `/epigenetics/uploads/{id}` | Yes | Get upload details and parsed regions |
+| DELETE | `/epigenetics/uploads/{id}` | Yes | Delete upload and associated data |
+| POST | `/epigenetics/uploads/{id}/analyze` | Yes | Trigger ENCODE/Roadmap cross-referencing |
+| GET | `/epigenetics/analysis/{id}` | Yes | Get analysis results |
+| GET | `/epigenetics/analysis/{id}/regions` | Yes | Paginated region list with annotations |
+| GET | `/epigenetics/analysis/{id}/genome-overlay` | Yes | Epigenetic annotations overlaid on genome variants |
+
+**POST /epigenetics/upload**
+```
+Request: multipart/form-data
+  - file: BED or CSV file (max 100 MB)
+  - data_type: "histone" | "methylation"
+  - assay_type: "H3K27ac" | "H3K4me3" | "WGBS" | "450K" | "EPIC" (optional)
+  - tissue_type: "blood" | "saliva" | "other" (optional, for Roadmap matching)
+
+Response (202):
+{
+  "upload_id": "uuid",
+  "status": "uploaded",
+  "message": "Epigenetic data received. Analysis will begin shortly.",
+  "analysis_task_id": "celery-task-uuid"
+}
+```
+
+**GET /epigenetics/analysis/{id}/genome-overlay**
+```
+Response (200):
+{
+  "overlays": [
+    {
+      "variant_rsid": "rs1801133",
+      "gene": "MTHFR",
+      "variant_risk": "elevated",
+      "epigenetic_context": {
+        "region": "chr1:11845780-11846780",
+        "feature_type": "promoter",
+        "methylation_beta": 0.82,
+        "interpretation": "High methylation at the MTHFR promoter may reduce
+                           expression, compounding the effect of the C677T
+                           risk variant on folate metabolism."
+      },
+      "adjusted_risk_modifier": 1.15
+    }
+  ]
+}
+```
+
+### 4.7 Wearables Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/wearables/providers` | Yes | List available wearable providers |
+| POST | `/wearables/connect` | Yes | Initiate OAuth2 flow for a provider |
+| GET | `/wearables/callback` | No* | OAuth2 callback (state-validated) |
+| GET | `/wearables/connections` | Yes | List user's connected devices |
+| DELETE | `/wearables/connections/{id}` | Yes | Disconnect a wearable (revoke tokens) |
+| POST | `/wearables/connections/{id}/sync` | Yes | Trigger manual data sync |
+| GET | `/wearables/data` | Yes | Query wearable data by date range and type |
+| GET | `/wearables/data/latest` | Yes | Get most recent day's data |
+
+**POST /wearables/connect**
+```
+Request:
+{
+  "provider": "fitbit"
+}
+
+Response (200):
+{
+  "auth_url": "https://api.tryterra.co/v2/auth/...",
+  "state": "random-csrf-state-token",
+  "provider": "fitbit",
+  "message": "Redirect user to auth_url to complete connection."
+}
+```
+
+**GET /wearables/data**
+```
+Query params:
+  - type: "activity" | "sleep" | "heart_rate" | "hrv" | "spo2" (optional)
+  - from_date: "2026-02-01" (optional)
+  - to_date: "2026-02-28" (optional)
+
+Response (200):
+{
+  "data": [
+    {
+      "date": "2026-02-27",
+      "type": "activity",
+      "provider": "fitbit",
+      "summary": {
+        "steps": 8432,
+        "active_minutes": 45,
+        "calories_burned": 2150,
+        "distance_km": 6.2
+      }
+    },
+    {
+      "date": "2026-02-27",
+      "type": "sleep",
+      "provider": "oura",
+      "summary": {
+        "total_sleep_minutes": 420,
+        "deep_sleep_minutes": 90,
+        "rem_sleep_minutes": 105,
+        "sleep_score": 82
+      }
+    }
+  ]
+}
+```
+
+### 4.8 Daily Analysis / Insights
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/insights/daily` | Yes | Get today's cross-domain insights |
+| GET | `/insights/history` | Yes | Paginated insight history |
+| POST | `/insights/generate` | Yes | Force re-generation of daily insight |
+
+**GET /insights/daily**
+```
+Response (200):
+{
+  "date": "2026-02-28",
+  "insights": [
+    {
+      "id": "uuid",
+      "type": "daily",
+      "title": "Great sleep night — your HRV is trending up",
+      "body": "Your deep sleep (92 min) was 15% above your 7-day average.
+               Combined with your BDNF Val/Met genotype (rs6265 G/A), quality
+               deep sleep is especially important for cognitive recovery.
+               Keep up the consistent bedtime routine.",
+      "data_sources": ["wearable:sleep", "genome:rs6265"],
+      "confidence": "medium"
+    },
+    {
+      "id": "uuid",
+      "type": "daily",
+      "title": "Step count improving glucose risk management",
+      "body": "You've averaged 8,200 steps/day this week (up 12% from last
+               week). Given your TCF7L2 risk variant (rs7903146 C/T) and your
+               last HbA1c reading of 5.8%, sustained activity is your
+               strongest lever for glucose control.",
+      "data_sources": ["wearable:activity", "genome:rs7903146", "blood:hemoglobin_a1c"],
+      "confidence": "high"
+    }
+  ]
+}
+```
+
 ---
 
 ## 5. Security Considerations
@@ -647,7 +1050,10 @@ Response (200):
 | Data Type | Classification | Handling |
 |-----------|---------------|----------|
 | Genome data (VCF) | **Highly Sensitive PII** | Encrypted at rest (AES-256-GCM), per-user keys |
+| Epigenetic data (BED/CSV) | **Highly Sensitive PII** | Encrypted at rest (AES-256-GCM), per-user keys |
 | Blood test results | **Sensitive Health Data** | Encrypted at rest, access-controlled |
+| Wearable health data | **Sensitive Health Data** | Encrypted at rest, access-controlled |
+| Wearable OAuth tokens | **Secret** | AES-encrypted with user DEK, never logged |
 | Analysis results | **Sensitive** | Encrypted at rest, tied to user |
 | User credentials | **Secret** | bcrypt-hashed, never stored in plaintext |
 | AI-generated reports | **Sensitive** | Stored encrypted, user-owned |
@@ -728,6 +1134,54 @@ Response (200):
   raw VCF after parsing if user opts in.
 - **Audit logging**: All data access events logged for compliance review.
 
+### 5.7 Wearable OAuth2 Security
+
+```
+User clicks "Connect Fitbit"
+       │
+       ▼
+[Frontend] ──POST /wearables/connect──▶ [Flask API]
+                                            │
+                                   1. Generate CSRF state token (random 32 bytes)
+                                   2. Store state in Redis (TTL: 10 min)
+                                   3. Build Terra/ROOK auth URL with state + redirect_uri
+                                   4. Return auth_url to frontend
+                                            │
+                                            ▼
+[Frontend] ──redirect──▶ [Terra/ROOK OAuth consent page]
+                                            │
+                              User approves  │
+                                            ▼
+[Terra/ROOK] ──GET /wearables/callback?code=...&state=...──▶ [Flask API]
+                                            │
+                                   1. Validate state against Redis (CSRF protection)
+                                   2. Exchange authorization code for access + refresh tokens
+                                   3. Encrypt tokens with user's DEK (AES-256-GCM)
+                                   4. Store WearableConnection record
+                                   5. Trigger initial data sync (Celery task)
+                                   6. Redirect to frontend success page
+```
+
+**OAuth token security measures:**
+- Access and refresh tokens are **never stored in plaintext** — encrypted
+  with the user's per-user Data Encryption Key (same envelope encryption
+  as genome files).
+- Tokens are **never logged** or included in error messages.
+- Token refresh is handled server-side by the `wearable_sync` Celery task;
+  if refresh fails, connection status is set to `expired` and user is
+  notified.
+- Users can revoke connections at any time via `DELETE /wearables/connections/{id}`,
+  which calls the provider's token revocation endpoint and deletes stored tokens.
+- **PKCE** (Proof Key for Code Exchange) is used when the provider supports it.
+
+### 5.8 Epigenetic Data Security
+
+- Epigenetic files (BED, CSV) are treated with the same sensitivity as
+  genome data: encrypted at rest with per-user DEK.
+- Only anonymized region coordinates (chr:start-end) are sent to ENCODE/Roadmap
+  APIs — no user identifiers or linked health data.
+- Parsed `EpigeneticRegion` records inherit the user's encryption scope.
+
 ---
 
 ## 6. Genome Database Integration Plan
@@ -740,39 +1194,40 @@ Response (200):
                     │  (from VCF)      │
                     └────────┬─────────┘
                              │
-              ┌──────────────┼──────────────┐
-              │              │              │
-              ▼              ▼              ▼
-     ┌────────────┐  ┌────────────┐  ┌───────────┐
-     │  Ensembl   │  │  ClinVar   │  │   GWAS    │
-     │  VEP API   │  │  E-Utils   │  │  Catalog  │
-     └─────┬──────┘  └─────┬──────┘  └─────┬─────┘
-           │               │               │
-           ▼               ▼               ▼
-     Functional       Clinical          Trait
-     consequences     significance      associations
-     (missense,       (pathogenic,      (odds ratios,
-      synonymous,      benign, VUS)      p-values)
-      regulatory)
-              │              │              │
-              └──────────────┼──────────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │   Annotation     │
-                    │   Aggregator     │
-                    │   Service        │
-                    └────────┬─────────┘
-                             │
-                    ┌────────┴─────────┐
-                    │                  │
-                    ▼                  ▼
-            ┌────────────┐    ┌──────────────┐
-            │  NCBI      │    │  PharmGKB    │
-            │  (dbSNP,   │    │  (drug-gene  │
-            │   PubMed,  │    │   inter-     │
-            │   Gene)    │    │   actions)   │
-            └────────────┘    └──────────────┘
+     ┌───────────┬───────────┼───────────┬────────────┐
+     │           │           │           │            │
+     ▼           ▼           ▼           ▼            ▼
+┌─────────┐┌─────────┐┌──────────┐┌──────────┐┌───────────┐
+│ Ensembl ││ ClinVar ││  GWAS    ││  gnomAD  ││  NCBI     │
+│ VEP API ││ E-Utils ││ Catalog  ││  GraphQL ││  Entrez   │
+└────┬────┘└────┬────┘└────┬─────┘└────┬─────┘└─────┬─────┘
+     │          │          │           │             │
+     ▼          ▼          ▼           ▼             ▼
+  Function   Clinical   Trait      Population    Gene func
+  conseq.    signif.    assoc.     allele freq   summaries,
+  (missense, (patho-   (odds      (global +     dbSNP,
+   synon.,    genic,    ratios,    per-ancestry  PubMed
+   regul.)    VUS)      p-vals)    breakdown)    literature
+     │          │          │           │             │
+     └──────────┴──────────┼───────────┴─────────────┘
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │   Annotation     │
+                  │   Aggregator     │
+                  │   Service        │
+                  └────────┬─────────┘
+                           │
+              ┌────────────┼────────────────┐
+              │            │                │
+              ▼            ▼                ▼
+      ┌────────────┐ ┌──────────┐  ┌──────────────┐
+      │  PharmGKB  │ │ Epigen.  │  │  Wearable    │
+      │  (drug-    │ │ Overlay  │  │  Context     │
+      │   gene,    │ │ (ENCODE, │  │  (Terra /    │
+      │   dosing   │ │  Roadmap │  │   ROOK data) │
+      │   guides)  │ │  data)   │  │              │
+      └────────────┘ └──────────┘  └──────────────┘
 ```
 
 ### 6.2 External API Details
@@ -822,22 +1277,149 @@ Response (200):
     genome-wide significance).
   - Map EFO trait ontology terms to human-readable category labels.
 
-#### NCBI dbSNP / Gene / PubMed
+#### gnomAD (Genome Aggregation Database)
 
-- **Endpoint**: E-Utilities (`esearch`, `esummary`, `efetch`)
-- **Use Case**: Supplement missing data — gene function summaries, variant
-  population frequencies (from dbSNP), literature references (PubMed).
-- **Integration Strategy**: Secondary lookups for variants flagged as
-  clinically significant by ClinVar or GWAS Catalog.
+- **Endpoint**: `https://gnomad.broadinstitute.org/api` (GraphQL)
+- **Rate Limit**: No published rate limit; use reasonable batching.
+- **Data Retrieved**: Population allele frequencies (global + per-ancestry:
+  African, East Asian, European, Latino, South Asian), allele count,
+  homozygote count, filtering status (PASS/fail).
+- **Example Query**:
+  ```python
+  import httpx
 
-#### PharmGKB (Optional / Future)
+  query = """
+  {
+    variant(variantId: "1-55516888-G-A", dataset: gnomad_r4) {
+      variant_id
+      genome {
+        ac
+        an
+        af
+        populations {
+          id
+          ac
+          an
+          af
+        }
+        filters
+      }
+    }
+  }
+  """
+  response = httpx.post(
+      "https://gnomad.broadinstitute.org/api",
+      json={"query": query},
+  )
+  data = response.json()["data"]["variant"]
+  ```
+- **Integration Strategy**:
+  - Query by variant ID (`{chrom}-{pos}-{ref}-{alt}` format).
+  - Use population frequencies to contextualize risk: a "pathogenic"
+    variant present in 5% of the population is very different from one
+    at 0.001%.
+  - Store global AF and per-ancestry AF in `VariantAnnotation` (source: `gnomad`).
+  - Cache aggressively (TTL: 30 days) — gnomAD releases are infrequent.
 
-- **Endpoint**: `https://api.pharmgkb.org/v1/data/variant/{rsid}`
-- **Rate Limit**: Requires API key (free for non-commercial).
-- **Data Retrieved**: Drug-gene interactions, dosing guidelines,
-  metabolizer phenotype predictions.
-- **Integration Strategy**: Query for variants in known pharmacogenes
-  (CYP2D6, CYP2C19, CYP1A2, VKORC1, etc.).
+#### NCBI Entrez (Gene Details, dbSNP, PubMed)
+
+- **Endpoint**: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/`
+  - Gene: `esearch.fcgi?db=gene&term={gene_symbol}[sym]+AND+human[orgn]`
+  - Gene detail: `esummary.fcgi?db=gene&id={gene_id}`
+  - dbSNP: `esummary.fcgi?db=snp&id={rsid_number}`
+  - PubMed: `esearch.fcgi?db=pubmed&term={rsid}+AND+{condition}`
+  - Literature fetch: `efetch.fcgi?db=pubmed&id={pmid}&rettype=abstract`
+- **Rate Limit**: 3/second without API key; **10/second with NCBI API key** (free, register at NCBI).
+- **Data Retrieved**:
+  - **Gene**: Full gene name, summary/function description, genomic location,
+    associated pathways, GO terms, expression data.
+  - **dbSNP**: Population allele frequencies, functional class, clinical
+    significance links, merged rsID mappings.
+  - **PubMed**: Literature count for gene-disease pairs, recent publications,
+    abstracts for citation.
+- **Example Query**:
+  ```python
+  import httpx
+
+  NCBI_API_KEY = "your_key"
+
+  # Get gene details for MTHFR
+  resp = httpx.get(
+      "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+      params={
+          "db": "gene",
+          "term": "MTHFR[sym] AND human[orgn]",
+          "retmode": "json",
+          "api_key": NCBI_API_KEY,
+      },
+  )
+  gene_ids = resp.json()["esearchresult"]["idlist"]
+
+  # Get gene summary
+  summary = httpx.get(
+      "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi",
+      params={
+          "db": "gene",
+          "id": gene_ids[0],
+          "retmode": "json",
+          "api_key": NCBI_API_KEY,
+      },
+  )
+  gene_data = summary.json()["result"][gene_ids[0]]
+  # gene_data["summary"] → "Methylenetetrahydrofolate reductase catalyzes..."
+  # gene_data["description"] → "methylenetetrahydrofolate reductase"
+  ```
+- **Integration Strategy**:
+  - **Primary lookups**: For every gene symbol found by Ensembl VEP, fetch
+    the gene function summary from NCBI Gene — this powers the "Gene
+    Function" section in reports.
+  - **Literature enrichment**: For clinically significant variants, query
+    PubMed for recent publications to cite in reports.
+  - **dbSNP cross-reference**: Resolve merged rsIDs and fetch population
+    frequencies as a fallback when gnomAD lacks coverage.
+  - Cache gene summaries for 30 days (stable data), PubMed queries for 7 days.
+
+#### PharmGKB (Pharmacogenomics)
+
+- **Endpoint**: `https://api.pharmgkb.org/v1/data/`
+  - Variant: `/variant/{rsid}`
+  - Clinical annotations: `/clinicalAnnotation?location.rsid={rsid}`
+  - Drug labels: `/drugLabel?relatedGenes.symbol={gene}`
+  - Guideline annotations: `/guidelineAnnotation?relatedGenes.symbol={gene}`
+- **Rate Limit**: Requires API key (free for non-commercial use).
+- **Data Retrieved**: Drug-gene interactions, FDA-label pharmacogenomic
+  biomarkers, CPIC dosing guidelines, metabolizer phenotype predictions
+  (poor/intermediate/normal/rapid/ultra-rapid).
+- **Example Query**:
+  ```python
+  import httpx
+
+  PHARMGKB_KEY = "your_key"
+  headers = {"Authorization": f"Bearer {PHARMGKB_KEY}"}
+
+  # Get clinical annotations for CYP2C19 variant
+  resp = httpx.get(
+      "https://api.pharmgkb.org/v1/data/clinicalAnnotation",
+      params={"location.rsid": "rs4244285"},
+      headers=headers,
+  )
+  annotations = resp.json()["data"]
+  # Each annotation includes:
+  #   - drugs (e.g., clopidogrel, omeprazole)
+  #   - phenotype (e.g., "Poor Metabolizer")
+  #   - significance level
+  #   - CPIC guideline link
+  ```
+- **Integration Strategy**:
+  - Query for all variants in known pharmacogenes: CYP2D6, CYP2C19,
+    CYP2C9, CYP1A2, CYP3A5, VKORC1, DPYD, UGT1A1, SLCO1B1, TPMT, NUDT15.
+  - Map genotype → metabolizer status using PharmGKB diplotype tables.
+  - Pull CPIC dosing guidelines for actionable drug-gene pairs.
+  - Integrate into the pharmacogenomic risk category and generate
+    drug-specific recommendations (e.g., "Your CYP2C19 poor metabolizer
+    status means clopidogrel may be less effective — discuss alternatives
+    with your doctor").
+  - Cache for 30 days (guideline updates are infrequent).
 
 ### 6.3 Annotation Pipeline Architecture
 
@@ -854,8 +1436,18 @@ Step 2: Batch Annotation
   └─ Fan out parallel requests:
        ├─ Ensembl VEP (batches of 200)
        ├─ ClinVar (batches of 50 rsIDs)
-       └─ GWAS Catalog (individual rsID lookups, parallelized)
+       ├─ GWAS Catalog (individual rsID lookups, parallelized)
+       ├─ gnomAD (GraphQL queries, batched by chromosome)
+       ├─ NCBI Entrez Gene (for gene function summaries)
+       └─ PharmGKB (for variants in known pharmacogenes)
   └─ Write results to cache and database
+
+Step 2.5: Epigenetic Overlay (if user has epigenetic data)
+  └─ For each annotated variant, check if it falls within an
+     EpigeneticRegion from the user's uploads
+  └─ If overlap: annotate with methylation/histone context
+  └─ Adjust risk interpretation based on epigenetic state
+     (e.g., hypermethylated promoter → reduced expression → risk modifier)
 
 Step 3: Risk Scoring
   └─ Aggregate variant annotations by category:
@@ -889,8 +1481,13 @@ Step 5: AI Report Generation
 | Ensembl VEP | `vep:{build}:{chrom}:{pos}:{ref}:{alt}` | 30 days | Annotations stable between Ensembl releases |
 | ClinVar | `clinvar:{rsid}` | 14 days | Monthly updates |
 | GWAS Catalog | `gwas:{rsid}` | 14 days | Periodic new studies |
+| gnomAD | `gnomad:{chrom}:{pos}:{ref}:{alt}` | 30 days | Release-based, very stable |
+| NCBI Gene | `ncbi_gene:{gene_symbol}` | 30 days | Gene summaries rarely change |
 | NCBI dbSNP | `dbsnp:{rsid}` | 30 days | Stable data |
+| NCBI PubMed | `pubmed:{rsid}:{query}` | 7 days | New publications appear frequently |
 | PharmGKB | `pharmgkb:{rsid}` | 30 days | Infrequent changes |
+| ENCODE | `encode:{chrom}:{start}:{end}:{assay}` | 14 days | New experiments added periodically |
+| Roadmap | `roadmap:{chrom}:{start}:{end}:{tissue}` | 30 days | Stable reference dataset |
 
 ### 6.5 Rate Limiting and Resilience
 
@@ -1009,7 +1606,11 @@ Cross-reference blood markers with genome analysis results:
 │    writing guidelines           │
 │  - User's risk profile (JSON)   │
 │  - Key variant summaries        │
+│  - gnomAD population freqs      │
+│  - PharmGKB drug interactions   │
+│  - Epigenetic context (if any)  │
 │  - Blood test trends (if any)   │
+│  - Wearable trends (if any)     │
 │  - Recommendation templates     │
 │  - Disclaimer requirements      │
 └──────────────┬──────────────────┘
@@ -1041,11 +1642,14 @@ Cross-reference blood markers with genome analysis results:
 │  Sections:                      │
 │  1. Executive Summary           │
 │  2. Genetic Risk Overview       │
-│  3. Detailed Findings           │
-│  4. Lifestyle Recommendations   │
-│  5. Blood Test Correlations     │
-│  6. Suggested Tweaks            │
-│  7. Disclaimers & References    │
+│  3. Epigenetic Context          │
+│  4. Detailed Variant Findings   │
+│  5. Pharmacogenomic Profile     │
+│  6. Blood Test Correlations     │
+│  7. Wearable Trends & Insights  │
+│  8. Lifestyle Recommendations   │
+│  9. Suggested Daily Tweaks      │
+│ 10. Disclaimers & References    │
 └─────────────────────────────────┘
 ```
 
@@ -1076,44 +1680,522 @@ health decisions based on genetic information.
 
 ---
 
-## 9. Deployment Architecture
+## 9. Epigenetics Module
 
-### 9.1 Docker Compose Topology
+### 9.1 Overview
+
+The epigenetics module allows users to upload data reflecting how their genes
+are regulated — beyond the DNA sequence itself. Two primary data types are
+supported:
+
+| Data Type | File Format | Source | What It Measures |
+|-----------|------------|--------|------------------|
+| **Histone Marks** | BED (narrowPeak) | ChIP-seq assays | Which genomic regions are active (H3K27ac, H3K4me3) or repressed (H3K27me3) |
+| **DNA Methylation** | CSV (beta values) | 450K/EPIC arrays, WGBS | CpG site methylation levels (0.0 = unmethylated, 1.0 = fully methylated) |
+
+### 9.2 File Parsing Pipeline
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                 docker-compose.yml                      │
-│                                                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │  nginx   │  │  flask   │  │  worker  │            │
-│  │  :80/443 │─▶│  :5000   │  │ (celery) │            │
-│  └──────────┘  └──────────┘  └──────────┘            │
-│                      │              │                  │
-│                      ▼              ▼                  │
-│               ┌──────────┐  ┌──────────┐              │
-│               │  redis   │  │  flower  │              │
-│               │  :6379   │  │  :5555   │              │
-│               └──────────┘  └──────────┘              │
-│                                                        │
-│  Volumes:                                              │
-│    - sqlite_data:/data/db                              │
-│    - encrypted_files:/data/files                       │
-│    - redis_data:/data/redis                            │
-│                                                        │
-└────────────────────────────────────────────────────────┘
+Epigenetic file uploaded
+       │
+       ▼
+  Detect file type
+       │
+       ├─ BED file ──▶ Validate BED format (chrom, start, end, name, score)
+       │                Parse into EpigeneticRegion records
+       │                Extract histone mark from column 4 or filename
+       │
+       ├─ CSV file ──▶ Validate methylation format (probe_id/position, beta_value)
+       │                Map probe IDs to genomic coordinates (via manifest)
+       │                Parse into EpigeneticRegion records
+       │                Calculate global methylation average
+       │
+       ▼
+  Annotate regions
+       │
+       ├─ Identify feature type (promoter/enhancer/gene_body/intergenic)
+       │   using GENCODE gene annotations
+       │
+       ├─ Map nearest gene symbol for each region
+       │
+       ▼
+  Query external databases
+       │
+       ├─ ENCODE REST API ──▶ Find overlapping experiments
+       │                       (same tissue, same histone mark or WGBS)
+       │
+       ├─ Roadmap Epigenomics ──▶ ChromHMM state for the region
+       │                          (active promoter, enhancer, repressed, etc.)
+       │
+       ▼
+  Generate interpretations
+       │
+       ├─ Rule-based: "High methylation (β=0.85) at MTHFR promoter →
+       │               reduced expression → may compound C677T variant effect"
+       │
+       ├─ Cross-reference with user's genome variants (if available)
+       │
+       ▼
+  Store results → EpigeneticRegion records
+  Update metrics_json on EpigeneticUpload
 ```
 
-### 9.2 Container Specifications
+### 9.3 External API Integration
+
+#### ENCODE REST API
+
+- **Base URL**: `https://www.encodeproject.org`
+- **Authentication**: None required for public data.
+- **Rate Limit**: Respectful usage; no strict published limit.
+- **Key Endpoints**:
+
+**Search for experiments by region and assay type:**
+```python
+import httpx
+
+# Find WGBS (whole-genome bisulfite sequencing) experiments
+# overlapping a genomic region in blood tissue
+resp = httpx.get(
+    "https://www.encodeproject.org/search/",
+    params={
+        "type": "Experiment",
+        "assay_title": "WGBS",
+        "biosample_ontology.term_name": "blood",
+        "format": "json",
+        "limit": 10,
+        "field": "accession",
+        "field": "biosample_ontology.term_name",
+        "field": "target.label",
+        "field": "files.href",
+    },
+    headers={"Accept": "application/json"},
+)
+experiments = resp.json()["@graph"]
+# Returns list of ENCODE experiment accessions with file download URLs
+```
+
+**Get specific experiment metadata:**
+```python
+resp = httpx.get(
+    "https://www.encodeproject.org/experiments/ENCSR000AKA/",
+    headers={"Accept": "application/json"},
+)
+experiment = resp.json()
+# experiment["assay_title"] → "Histone ChIP-seq"
+# experiment["target"]["label"] → "H3K27ac"
+# experiment["biosample_ontology"]["term_name"] → "K562"
+```
+
+**Search for annotations overlapping user regions:**
+```python
+# Search for annotations (ChromHMM, peaks) near a specific region
+resp = httpx.get(
+    "https://www.encodeproject.org/search/",
+    params={
+        "type": "Annotation",
+        "annotation_type": "chromatin state",
+        "assembly": "GRCh38",
+        "format": "json",
+        "limit": 5,
+    },
+    headers={"Accept": "application/json"},
+)
+```
+
+#### Roadmap Epigenomics (NIH / WashU)
+
+- **Base URL**: `http://egg2.wustl.edu/roadmap/`
+- **Data Portal**: `http://egg2.wustl.edu/roadmap/web_portal/`
+- **Data Access**: Bulk data files (BED, bigWig) + REST-like URL patterns.
+- **Key Resources**:
+
+**ChromHMM 15-state model (pre-computed chromatin states):**
+```python
+import httpx
+
+# Download ChromHMM state annotations for a specific epigenome
+# E.g., E062 = Primary mononuclear cells from peripheral blood
+ROADMAP_BASE = "http://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/coreMarks/jointModel/final"
+epigenome_id = "E062"  # Blood mononuclear cells
+
+resp = httpx.get(
+    f"{ROADMAP_BASE}/{epigenome_id}_15_coreMarks_hg38lift_mnemonics.bed.gz",
+)
+# Parse BED: each row = (chrom, start, end, state_label)
+# States: TssA (active TSS), TssAFlnk (flanking active TSS),
+#         TxFlnk, Tx, TxWk, EnhG, Enh, ZNF/Rpts, Het,
+#         TssBiv (bivalent TSS), BivFlnk, EnhBiv, ReprPC,
+#         ReprPCWk, Quies
+```
+
+**Match user regions to Roadmap chromatin states:**
+```python
+# For a user's epigenetic region chr1:11845000-11846000:
+# 1. Load the relevant Roadmap ChromHMM BED for the user's tissue type
+# 2. Intersect with the user's region using coordinate overlap
+# 3. Report: "This region is annotated as 'TssA' (Active TSS) in blood
+#            cells by the Roadmap Epigenomics reference map, suggesting
+#            this is an active promoter region."
+```
+
+**Histone mark signal tracks:**
+```python
+# Download H3K27ac signal for blood cells
+SIGNAL_URL = f"http://egg2.wustl.edu/roadmap/data/byFileType/signal/consolidated/macs2signal/pval/{epigenome_id}-H3K27ac.pval.signal.bigwig"
+# Use pyBigWig to query signal at specific coordinates
+```
+
+- **Integration Strategy**:
+  - Pre-download and index ChromHMM state files for the 5 most relevant
+    tissue types (blood, saliva, liver, brain, adipose) — these are small
+    BED files (~5 MB each).
+  - On analysis: intersect user regions with pre-indexed ChromHMM states
+    using in-memory interval tree (e.g., `intervaltree` Python library).
+  - For histone signal lookups, use remote bigWig queries via `pyBigWig`
+    or cache locally.
+
+### 9.4 Genome-Epigenome Cross-Reference Logic
+
+| Scenario | Genome Data | Epigenetic Data | Combined Interpretation |
+|----------|-------------|-----------------|------------------------|
+| Silenced risk gene | BRCA1 pathogenic variant | High promoter methylation (β>0.7) | "Methylation at the BRCA1 promoter may reduce expression of the risk allele, potentially attenuating the variant's effect — but this is NOT clinically validated." |
+| Activated risk enhancer | Risk variant in enhancer region | H3K27ac peak overlapping variant | "Active enhancer mark at your risk variant suggests this regulatory region is active, potentially amplifying the variant's gene-regulatory effect." |
+| Bivalent promoter | Risk variant near bivalent TSS | ChromHMM: TssBiv state | "This gene's promoter is in a bivalent state (poised between active and repressed), suggesting context-dependent expression that may be influenced by environmental factors." |
+| Pharmacogene silencing | CYP2D6 poor metabolizer | CYP2D6 promoter hypermethylated | "Epigenetic silencing of CYP2D6 may further reduce metabolizer activity beyond what the genotype alone predicts." |
+
+**Risk score adjustment formula:**
+```
+adjusted_score = base_genetic_score × epigenetic_modifier
+
+where epigenetic_modifier:
+  - Promoter hypermethylation of risk gene → 0.85 (attenuating)
+  - Active enhancer at risk locus → 1.15 (amplifying)
+  - Bivalent state → 1.0 (neutral, flag as uncertain)
+  - No epigenetic data → 1.0 (no adjustment)
+```
+
+---
+
+## 10. Wearables Integration
+
+### 10.1 Architecture Overview
+
+```
+┌───────────────────┐     ┌──────────────────────┐
+│   User's Devices  │     │   GenomeInsight       │
+│                   │     │   Backend             │
+│  ┌─────────────┐  │     │                       │
+│  │ Fitbit      │──┼──┐  │  ┌─────────────────┐  │
+│  │ Garmin      │  │  │  │  │ Wearable OAuth  │  │
+│  │ Apple Watch │  │  │  │  │ Manager         │  │
+│  │ Oura Ring   │  │  │  │  │                 │  │
+│  │ Whoop       │  │  │  │  │ - /connect      │  │
+│  │ Samsung     │  │  ├──┼─▶│ - /callback     │  │
+│  │ Polar       │  │  │  │  │ - /disconnect   │  │
+│  │ Withings    │  │  │  │  └────────┬────────┘  │
+│  │ ...400+     │  │  │  │           │           │
+│  └─────────────┘  │  │  │           ▼           │
+│                   │  │  │  ┌─────────────────┐  │
+└───────────────────┘  │  │  │ Terra / ROOK    │  │
+                       │  │  │ Unified API     │  │
+                       └──┼─▶│                 │  │
+                          │  │ - OAuth2 proxy  │  │
+                          │  │ - Data normalizn│  │
+                          │  │ - Webhook push  │  │
+                          │  └────────┬────────┘  │
+                          │           │           │
+                          │           ▼           │
+                          │  ┌─────────────────┐  │
+                          │  │ Celery Tasks    │  │
+                          │  │                 │  │
+                          │  │ wearable_sync   │  │
+                          │  │ (every 6 hours) │  │
+                          │  │                 │  │
+                          │  │ daily_insight   │  │
+                          │  │ (07:00 local)   │  │
+                          │  └─────────────────┘  │
+                          │                       │
+                          └───────────────────────┘
+```
+
+### 10.2 Unified Wearable API: Terra
+
+- **Website**: https://tryterra.co/
+- **What it does**: Single API to connect 400+ wearable devices. Handles
+  OAuth per-provider, normalizes data into a unified schema.
+- **Pricing**: Free tier available; paid tiers for production.
+
+**Key API calls:**
+
+```python
+import httpx
+
+TERRA_API_KEY = "your_key"
+TERRA_DEV_ID = "your_dev_id"
+TERRA_BASE = "https://api.tryterra.co/v2"
+headers = {
+    "x-api-key": TERRA_API_KEY,
+    "dev-id": TERRA_DEV_ID,
+}
+
+# 1. Generate authentication URL for a provider
+resp = httpx.post(
+    f"{TERRA_BASE}/auth/generateWidgetSession",
+    headers=headers,
+    json={
+        "reference_id": "user-uuid-in-our-system",
+        "providers": "FITBIT,GARMIN,OURA,WITHINGS,WHOOP",
+        "auth_success_redirect_url": "https://genomeinsight.app/wearables/success",
+        "auth_failure_redirect_url": "https://genomeinsight.app/wearables/error",
+    },
+)
+widget_url = resp.json()["url"]
+# Redirect user to widget_url → they select provider and authorize
+
+# 2. Pull daily activity data
+resp = httpx.get(
+    f"{TERRA_BASE}/daily",
+    headers=headers,
+    params={
+        "user_id": "terra-user-id",
+        "start_date": "2026-02-27",
+        "end_date": "2026-02-28",
+        "to_webhook": False,
+    },
+)
+daily_data = resp.json()["data"]
+# daily_data[0]["distance_data"]["steps"] → 8432
+# daily_data[0]["calories_data"]["total_burned_calories"] → 2150
+# daily_data[0]["heart_rate_data"]["summary"]["avg_hr_bpm"] → 68
+
+# 3. Pull sleep data
+resp = httpx.get(
+    f"{TERRA_BASE}/sleep",
+    headers=headers,
+    params={
+        "user_id": "terra-user-id",
+        "start_date": "2026-02-27",
+        "end_date": "2026-02-28",
+    },
+)
+sleep_data = resp.json()["data"]
+# sleep_data[0]["sleep_durations_data"]["asleep"]["duration_deep_sleep_state_seconds"]
+# sleep_data[0]["sleep_durations_data"]["asleep"]["duration_REM_sleep_state_seconds"]
+
+# 4. Pull body metrics (weight, body fat %)
+resp = httpx.get(
+    f"{TERRA_BASE}/body",
+    headers=headers,
+    params={
+        "user_id": "terra-user-id",
+        "start_date": "2026-02-27",
+        "end_date": "2026-02-28",
+    },
+)
+```
+
+### 10.3 Alternative: ROOK API
+
+- **Website**: https://www.tryrook.io/
+- **Similar to Terra**: Unified API for 400+ health devices.
+- **Key Differences**: Different pricing model, slightly different data
+  normalization schema.
+
+```python
+import httpx
+
+ROOK_API_KEY = "your_key"
+ROOK_BASE = "https://api.rook.io/api/v1"
+headers = {"Authorization": f"Bearer {ROOK_API_KEY}"}
+
+# Pull daily summary
+resp = httpx.get(
+    f"{ROOK_BASE}/users/{user_id}/summaries/daily",
+    headers=headers,
+    params={"date": "2026-02-27"},
+)
+# Returns normalized daily: steps, calories, HR, sleep, etc.
+```
+
+### 10.4 Data Sync Architecture
+
+**Celery Beat scheduled tasks:**
+
+```python
+# In celery_worker.py / celery config:
+CELERYBEAT_SCHEDULE = {
+    "wearable-sync-all-users": {
+        "task": "app.tasks.wearable_tasks.sync_all_active_connections",
+        "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+    },
+    "daily-insight-generation": {
+        "task": "app.tasks.insight_tasks.generate_daily_insights",
+        "schedule": crontab(minute=0, hour=7),  # 07:00 UTC (adjust per user timezone)
+    },
+}
+```
+
+**Sync flow:**
+
+```
+Celery Beat triggers wearable_sync_all
+       │
+       ▼
+  Query all WearableConnection WHERE status = 'active'
+       │
+       ▼
+  For each connection:
+       │
+       ├─ Check token_expires_at → refresh if needed
+       │   (encrypt new tokens with user DEK)
+       │
+       ├─ Call Terra/ROOK API for data since last_sync_at
+       │   - /daily (activity)
+       │   - /sleep
+       │   - /body
+       │   - /nutrition (if available)
+       │
+       ├─ Normalize response → DailyWearableData records
+       │   - Compute summary_json (steps, avg HR, sleep score, etc.)
+       │
+       ├─ Update WearableConnection.last_sync_at
+       │
+       └─ On error: set status = 'error', log, retry next cycle
+```
+
+### 10.5 Webhook Support (Optional)
+
+Terra supports push-based data delivery via webhooks. Instead of polling:
+
+```python
+# Terra sends POST to our webhook endpoint when new data arrives
+@wearable_bp.route("/webhook/terra", methods=["POST"])
+def terra_webhook():
+    payload = request.get_json()
+    # Verify webhook signature
+    signature = request.headers.get("terra-signature")
+    if not verify_terra_signature(signature, request.data):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    user_id = payload["user"]["reference_id"]  # Our user UUID
+    data_type = payload["type"]  # "activity", "sleep", "body", etc.
+    data = payload["data"]
+
+    # Store as DailyWearableData
+    store_wearable_data(user_id, data_type, data)
+
+    return jsonify({"status": "ok"}), 200
+```
+
+---
+
+## 11. Cross-Domain Correlation Engine
+
+### 11.1 Overview
+
+The correlation engine is the heart of GenomeInsight's differentiation. It
+connects all four data layers — genome, epigenetics, blood, and wearables —
+to produce insights that no single data source could provide alone.
+
+### 11.2 Correlation Matrix
+
+| Genome Variant | Epigenetic Context | Blood Marker | Wearable Signal | Combined Insight |
+|---------------|-------------------|--------------|-----------------|------------------|
+| TCF7L2 rs7903146 (T/T, high diabetes risk) | — | HbA1c trending up (5.4→5.8%) | Steps declining (8k→5k/day) | "Your diabetes-risk genotype + rising HbA1c + declining activity is a concerning trend. Even 30 min/day of walking can significantly improve insulin sensitivity." |
+| APOE ε4 carrier | — | LDL 145 mg/dL (elevated) | Low activity, poor sleep | "Your APOE ε4 status predisposes to elevated LDL. Combined with low activity and poor sleep (both linked to lipid metabolism), prioritize a Mediterranean diet and consistent exercise." |
+| MTHFR C677T (T/T) | MTHFR promoter methylated (β=0.8) | Homocysteine 18 μmol/L (high) | — | "Your MTHFR variant reduces enzyme activity, and high promoter methylation may further suppress expression. Your elevated homocysteine confirms impaired folate metabolism. Consider methylfolate supplementation (consult your doctor)." |
+| BDNF Val66Met (G/A) | — | — | Deep sleep 45 min (low), HRV declining | "Your BDNF variant affects neuroplasticity. Low deep sleep and declining HRV suggest suboptimal neural recovery. Prioritize sleep hygiene: consistent bedtime, cool room, no screens 1hr before bed." |
+| CYP1A2 slow (A/C) | — | — | Resting HR elevated after afternoon coffee (wearable timestamp) | "Your slow caffeine metabolism genotype + elevated afternoon HR pattern suggests caffeine is significantly impacting your cardiovascular system. Consider limiting caffeine to mornings only." |
+| HFE C282Y carrier | HFE promoter active (low methylation) | Ferritin 450 ng/mL (very high) | — | "Your hemochromatosis variant + active gene expression + very high ferritin is a clear signal. Discuss phlebotomy schedule with your doctor." |
+| FTO rs9939609 (A/A, obesity risk) | — | — | Steps avg 3k/day, BMI 29 (from body data) | "Your FTO risk variant + low activity + near-obese BMI: the FTO gene affects satiety signaling. Structured exercise (aim for 7k+ steps) has been shown to significantly attenuate FTO-related weight gain." |
+
+### 11.3 Insight Generation Pipeline
+
+```
+Celery Beat: daily_insight_generate (07:00)
+       │
+       ▼
+  For each user with active data:
+       │
+       ├─ Load user's latest data from each layer:
+       │   ├─ Genome: risk_summary_json, key variants, pharmacogenomics
+       │   ├─ Epigenetics: EpigeneticRegion records (if any)
+       │   ├─ Blood: most recent BloodResult records, trend direction
+       │   └─ Wearable: last 7 days of DailyWearableData summaries
+       │
+       ├─ Run correlation rules engine:
+       │   ├─ Match variant-blood pairs (e.g., APOE + LDL)
+       │   ├─ Match variant-wearable pairs (e.g., FTO + steps)
+       │   ├─ Match epigenetic-variant pairs (e.g., methylation + MTHFR)
+       │   ├─ Match blood-wearable pairs (e.g., glucose + activity)
+       │   └─ Detect trend changes (improving/worsening/new threshold)
+       │
+       ├─ Rank by priority:
+       │   ├─ Alert-level: Dangerous trend (e.g., HbA1c rising + declining activity)
+       │   ├─ Daily: Notable observation (e.g., great sleep night)
+       │   └─ Weekly: Summary of trends
+       │
+       ├─ Generate natural language insight (GPT or template):
+       │   ├─ Include specific data points from all contributing sources
+       │   ├─ Reference relevant rsIDs and gene names
+       │   ├─ Provide actionable suggestion
+       │   └─ Include disclaimer
+       │
+       └─ Store → DailyInsight records
+```
+
+### 11.4 Alert Thresholds
+
+| Condition | Trigger | Alert Level |
+|-----------|---------|-------------|
+| Blood marker exits normal range | Flag changes H→L or L→H | Alert |
+| Wearable metric declines >20% week-over-week | Steps, sleep, HRV | Daily |
+| Blood + genome convergence | Risk variant + abnormal blood value | Alert |
+| Positive trend | Blood marker improving toward normal | Daily (positive) |
+| Wearable + genome opportunity | Exercise correlated with risk gene amelioration | Weekly |
+
+---
+
+## 12. Deployment Architecture
+
+### 12.1 Docker Compose Topology
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                 docker-compose.yml                          │
+│                                                            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐ ┌──────────┐  │
+│  │  nginx   │  │  flask   │  │  worker  │ │  beat    │  │
+│  │  :80/443 │─▶│  :5000   │  │ (celery) │ │ (sched.) │  │
+│  └──────────┘  └──────────┘  └──────────┘ └──────────┘  │
+│                      │              │            │         │
+│                      ▼              ▼            ▼         │
+│               ┌──────────┐  ┌──────────┐                  │
+│               │  redis   │  │  flower  │                  │
+│               │  :6379   │  │  :5555   │                  │
+│               └──────────┘  └──────────┘                  │
+│                                                            │
+│  Volumes:                                                  │
+│    - sqlite_data:/data/db                                  │
+│    - encrypted_files:/data/files                           │
+│    - redis_data:/data/redis                                │
+│    - roadmap_cache:/data/roadmap (pre-downloaded BEDs)     │
+│                                                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+### 12.2 Container Specifications
 
 | Service | Base Image | Resources | Notes |
 |---------|-----------|-----------|-------|
 | nginx | nginx:alpine | 256MB RAM | Static assets, TLS, proxy |
 | flask | python:3.12-slim | 512MB RAM | Gunicorn with 4 workers |
 | worker | python:3.12-slim | 1GB RAM | Celery with 2 concurrent workers |
+| beat | python:3.12-slim | 256MB RAM | Celery Beat scheduler (wearable sync, daily insights) |
 | redis | redis:7-alpine | 256MB RAM | Persistence: RDB + AOF |
 | flower | mher/flower | 128MB RAM | Celery monitoring (admin only) |
 
-### 9.3 Environment Variables
+### 12.3 Environment Variables
 
 ```
 # Flask
@@ -1127,34 +2209,42 @@ DATABASE_URL=sqlite:///data/db/genomeinsight.db
 REDIS_URL=redis://redis:6379/0
 CELERY_BROKER_URL=redis://redis:6379/1
 
-# External APIs
+# External APIs — Genome
 NCBI_API_KEY=<ncbi-api-key>
+PHARMGKB_API_KEY=<pharmgkb-api-key>
 OPENAI_API_KEY=<openai-api-key>
+
+# External APIs — Wearables
+TERRA_API_KEY=<terra-api-key>
+TERRA_DEV_ID=<terra-dev-id>
+TERRA_WEBHOOK_SECRET=<terra-webhook-secret>
+# OR: ROOK_API_KEY=<rook-api-key>
 
 # File Storage
 UPLOAD_DIR=/data/files
 MAX_VCF_SIZE_MB=500
 MAX_BLOOD_FILE_SIZE_MB=20
+MAX_EPIGENETICS_FILE_SIZE_MB=100
 ```
 
 ---
 
-## 10. Ethical and Legal Considerations
+## 13. Ethical and Legal Considerations
 
-### 10.1 Medical Disclaimer Policy
+### 13.1 Medical Disclaimer Policy
 
 - Disclaimers displayed on **every** page containing health information.
 - Forced acknowledgment during onboarding before first upload.
 - Reports always include a non-removable disclaimer section.
 - Language reviewed by legal counsel before launch.
 
-### 10.2 Genetic Non-Discrimination
+### 13.2 Genetic Non-Discrimination
 
 - Inform users about GINA (Genetic Information Nondiscrimination Act) in
   the US and equivalent laws in other jurisdictions.
 - Advise users about potential implications of genetic data sharing.
 
-### 10.3 Data Sovereignty
+### 13.3 Data Sovereignty
 
 - Allow users to choose data residency region (future, multi-region
   deployment).
@@ -1162,14 +2252,33 @@ MAX_BLOOD_FILE_SIZE_MB=20
   except anonymized variant IDs to public databases (rsIDs only, no
   identifying information).
 
-### 10.4 Transparency
+### 13.4 Transparency
 
 - Show users exactly which databases were queried for each finding.
 - Link to original research papers (PubMed).
 - Show confidence levels for all recommendations.
 - Display last-updated dates for all external data sources.
 
-### 10.5 Informed Consent
+### 13.5 Wearable Data Ethics
+
+- Users can **disconnect any wearable** at any time, which revokes the
+  OAuth token and stops data collection.
+- Wearable data is **never shared** with wearable providers or third parties.
+- Users are clearly informed that wearable correlations are **observational,
+  not causal** — e.g., correlation between steps and glucose does not prove
+  causation.
+- All wearable insights include: "This observation is based on your personal
+  data trends and genetic profile. It is not medical advice."
+
+### 13.6 Epigenetic Data Caveats
+
+- Users are informed that epigenetic marks are **tissue-specific** and
+  **dynamic** — data from saliva may not reflect liver or brain epigenetics.
+- Epigenetic-genome risk adjustments are presented as **experimental and
+  informational** with appropriate uncertainty language.
+- No clinical claims are made about epigenetic modifications.
+
+### 13.7 Informed Consent
 
 Users must acknowledge before uploading:
 1. This is not a medical diagnostic tool.
@@ -1177,7 +2286,12 @@ Users must acknowledge before uploading:
 3. They can delete all their data at any time.
 4. Variant IDs (not personal data) are sent to public research databases
    for annotation.
-5. AI-generated reports may contain errors.
+5. Region coordinates (not personal data) are sent to ENCODE/Roadmap for
+   epigenetic annotation.
+6. Wearable data is pulled via third-party APIs (Terra/ROOK) and stored
+   encrypted on GenomeInsight servers.
+7. AI-generated reports and cross-domain insights may contain errors.
+8. Correlations between data layers are observational, not diagnostic.
 
 ---
 
@@ -1203,6 +2317,9 @@ Users must acknowledge before uploading:
 | Data Processing | pandas | 2+ | CSV parsing, data manipulation |
 | Encryption | cryptography | 42+ | AES-256-GCM file encryption |
 | HTTP Client | httpx | 0.27+ | Async external API calls |
+| BED/BigWig | pybedtools, pyBigWig | 0.9+ / 0.3+ | Epigenetic file parsing |
+| Interval Tree | intervaltree | 3.1+ | Fast genomic region overlap queries |
+| Scheduler | Celery Beat | 5+ | Periodic wearable sync, daily insights |
 | Containerization | Docker + Compose | 25+ / 2+ | Deployment |
 | Reverse Proxy | Nginx | 1.25+ | TLS, rate limiting |
 | Monitoring | Flower | 2+ | Celery task monitoring |
@@ -1221,6 +2338,9 @@ Users must acknowledge before uploading:
 | Sleep | CLOCK, PER2, ADA | rs1801260, rs2304672, rs73598374 | Circadian rhythm |
 | Caffeine | CYP1A2, ADORA2A | rs762551, rs5751876 | Caffeine sensitivity |
 | Lactose | LCT (MCM6) | rs4988235 | Lactose tolerance |
+| Iron Metabolism | HFE, TFR2, HAMP | rs1800562, rs1799945 | Hemochromatosis, iron overload |
+| Vitamin D | GC (DBP), CYP2R1 | rs2282679, rs10741657 | Vitamin D metabolism |
+| Longevity | FOXO3, CETP, APOE | rs2802292, rs5882 | Aging-related pathways |
 
 ## Appendix C: Project Directory Structure (Proposed)
 
@@ -1242,6 +2362,9 @@ genomeinsight/
 │   │   │   ├── user.py
 │   │   │   ├── genome.py         # GenomeUpload, GenomeAnalysis, Variant
 │   │   │   ├── blood.py          # BloodUpload, BloodResult
+│   │   │   ├── epigenetics.py    # EpigeneticUpload, EpigeneticRegion
+│   │   │   ├── wearable.py       # WearableConnection, DailyWearableData
+│   │   │   ├── insight.py        # DailyInsight
 │   │   │   ├── annotation.py     # VariantAnnotation
 │   │   │   ├── recommendation.py # HealthRecommendation
 │   │   │   └── audit.py          # AuditLog
@@ -1250,27 +2373,40 @@ genomeinsight/
 │   │   │   ├── auth.py           # /auth/* endpoints
 │   │   │   ├── genome.py         # /genome/* endpoints
 │   │   │   ├── blood.py          # /blood/* endpoints
+│   │   │   ├── epigenetics.py    # /epigenetics/* endpoints
+│   │   │   ├── wearables.py      # /wearables/* endpoints (OAuth, data)
+│   │   │   ├── insights.py       # /insights/* endpoints (daily analysis)
 │   │   │   ├── dashboard.py      # /dashboard/* endpoints
 │   │   │   └── tasks.py          # /tasks/* endpoints
 │   │   ├── services/
 │   │   │   ├── __init__.py
 │   │   │   ├── vcf_parser.py     # VCF file parsing
 │   │   │   ├── blood_parser.py   # PDF/CSV blood test parsing
+│   │   │   ├── epigenetics_parser.py  # BED/CSV epigenetic file parsing
 │   │   │   ├── encryption.py     # File encryption/decryption
 │   │   │   ├── annotation/
 │   │   │   │   ├── __init__.py
 │   │   │   │   ├── ensembl.py    # Ensembl VEP client
 │   │   │   │   ├── clinvar.py    # ClinVar E-Utils client
 │   │   │   │   ├── gwas.py       # GWAS Catalog client
-│   │   │   │   ├── ncbi.py       # NCBI dbSNP/PubMed client
-│   │   │   │   └── aggregator.py # Combine annotations
-│   │   │   ├── risk_scorer.py    # Risk category scoring
+│   │   │   │   ├── gnomad.py     # gnomAD GraphQL client
+│   │   │   │   ├── ncbi.py       # NCBI Entrez (Gene, dbSNP, PubMed)
+│   │   │   │   ├── pharmgkb.py   # PharmGKB client
+│   │   │   │   ├── encode.py     # ENCODE REST API client
+│   │   │   │   ├── roadmap.py    # Roadmap Epigenomics client
+│   │   │   │   └── aggregator.py # Combine all annotations
+│   │   │   ├── wearable_client.py # Terra/ROOK API wrapper
+│   │   │   ├── risk_scorer.py    # Risk category scoring (incl. epigenetic modifier)
+│   │   │   ├── correlation_engine.py # Cross-domain correlation logic
 │   │   │   ├── recommender.py    # Recommendation engine
 │   │   │   └── report_generator.py # AI report generation
 │   │   ├── tasks/
 │   │   │   ├── __init__.py
 │   │   │   ├── genome_tasks.py   # Celery: genome_analyze
 │   │   │   ├── blood_tasks.py    # Celery: blood_parse
+│   │   │   ├── epigenetics_tasks.py  # Celery: epigenetics_analyze
+│   │   │   ├── wearable_tasks.py # Celery: wearable_sync
+│   │   │   ├── insight_tasks.py  # Celery: daily_insight_generate
 │   │   │   └── report_tasks.py   # Celery: report_generate
 │   │   ├── schemas/
 │   │   │   ├── __init__.py
@@ -1302,9 +2438,12 @@ genomeinsight/
 │   │   │   ├── auth/             # Login, Register forms
 │   │   │   ├── genome/           # Upload wizard, analysis views
 │   │   │   ├── blood/            # Upload, results table, trend charts
+│   │   │   ├── epigenetics/      # Upload, region viewer, genome overlay
+│   │   │   ├── wearables/        # Connect device, data dashboard, trends
+│   │   │   ├── insights/         # Daily insight cards, timeline
 │   │   │   ├── dashboard/        # Summary cards, charts
-│   │   │   ├── reports/          # AI report viewer
-│   │   │   └── common/           # Shared UI components
+│   │   │   ├── reports/          # AI report viewer (expanded sections)
+│   │   │   └── common/           # Shared UI (DisclaimerModal, ErrorBoundary)
 │   │   ├── hooks/                # Custom React hooks
 │   │   ├── pages/                # Route-level components
 │   │   ├── store/                # State management (Zustand or Context)
