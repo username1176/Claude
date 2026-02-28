@@ -1,15 +1,15 @@
-"""Flask application factory for GenomeInsight."""
+"""Flask application factory for GenomeInsight.
+
+Flask imports are deferred to ``create_app()`` so the ``app`` package can
+be imported without Flask installed (e.g. by the Streamlit front-end that
+only needs ``app.services``).
+"""
 
 import os
 from pathlib import Path
 
-from flask import Flask, jsonify
 
-from app.config import ProductionConfig, config_by_name
-from app.extensions import cors, db, limiter
-
-
-def create_app(config_name: str | None = None) -> Flask:
+def create_app(config_name: str | None = None):
     """Create and configure the Flask application.
 
     Args:
@@ -17,6 +17,11 @@ def create_app(config_name: str | None = None) -> Flask:
                      Defaults to the ``FLASK_ENV`` environment variable,
                      falling back to ``"development"``.
     """
+    from flask import Flask, jsonify
+
+    from app.config import ProductionConfig, config_by_name
+    from app.extensions import cors, db, limiter
+
     if config_name is None:
         config_name = os.environ.get("FLASK_ENV", "development")
 
