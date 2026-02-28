@@ -323,6 +323,83 @@ def schedule_weekly_reanalysis(self) -> dict:
     return {"dispatched": dispatched, "total_complete": len(uploads)}
 
 
+@shared_task(bind=True, max_retries=0)
+def check_and_reanalyze_stale(self) -> dict:
+    """Re-analyze microbiome uploads whose cross-domain data has changed.
+
+    Scheduled by Celery Beat daily. Checks whether new genome, blood,
+    or wearable data has arrived since the last microbiome analysis
+    completed, and re-triggers if so.
+
+    This ensures cross-domain correlations stay fresh when users upload
+    new blood tests, connect a wearable, or add genome data after their
+    microbiome sample was already processed.
+    """
+    from app.models.blood import BloodUpload
+    from app.models.genome import GenomeUpload
+    from app.models.wearable import DailyWearableData
+
+    uploads = (
+        MicrobiomeUpload.query
+        .filter_by(status="complete")
+        .all()
+    )
+
+    dispatched = 0
+    skipped = 0
+
+    for upload in uploads:
+        analysis = upload.analysis
+        if not analysis or analysis.status != "complete" or not analysis.completed_at:
+            continue
+
+        completed = analysis.completed_at
+        user_id = upload.user_id
+
+        # Check if any cross-domain data is newer than the last analysis
+        has_newer_genome = (
+            GenomeUpload.query
+            .filter_by(user_id=user_id)
+            .filter(GenomeUpload.uploaded_at > completed)
+            .first()
+        ) is not None
+
+        has_newer_blood = (
+            BloodUpload.query
+            .filter_by(user_id=user_id)
+            .filter(BloodUpload.uploaded_at > completed)
+            .first()
+        ) is not None
+
+        has_newer_wearable = (
+            DailyWearableData.query
+            .filter_by(user_id=user_id)
+            .filter(DailyWearableData.fetched_at > completed)
+            .first()
+        ) is not None
+
+        if has_newer_genome or has_newer_blood or has_newer_wearable:
+            try:
+                run_microbiome_analysis.delay(analysis.id)
+                dispatched += 1
+                logger.info(
+                    "Re-analyzing microbiome %s: new data (genome=%s, blood=%s, wearable=%s)",
+                    analysis.id, has_newer_genome, has_newer_blood, has_newer_wearable,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to dispatch re-analysis for upload %s", upload.id
+                )
+        else:
+            skipped += 1
+
+    logger.info(
+        "Stale-check complete: dispatched=%d, skipped=%d, total=%d",
+        dispatched, skipped, len(uploads),
+    )
+    return {"dispatched": dispatched, "skipped": skipped, "total": len(uploads)}
+
+
 # -- Data helpers --------------------------------------------------------------
 
 

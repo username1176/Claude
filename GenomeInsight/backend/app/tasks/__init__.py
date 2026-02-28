@@ -16,4 +16,5 @@ from app.tasks.wearable_tasks import (  # noqa: F401
 from app.tasks.microbiome_tasks import (  # noqa: F401
     run_microbiome_analysis,
     schedule_weekly_reanalysis,
+    check_and_reanalyze_stale,
 )

@@ -2,9 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for cyvcf2 and other C-extension packages
+# System deps for cyvcf2, scipy, and other C-extension packages
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libhts-dev zlib1g-dev && \
+    apt-get install -y --no-install-recommends \
+        gcc libhts-dev zlib1g-dev \
+        gfortran libopenblas-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

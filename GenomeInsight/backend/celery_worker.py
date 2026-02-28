@@ -51,6 +51,11 @@ celery.conf.update(
             "schedule": crontab(minute=0, hour=3, day_of_week=1),  # Monday 03:00 UTC
             "options": {"queue": "analysis"},
         },
+        "daily-microbiome-stale-check": {
+            "task": "app.tasks.microbiome_tasks.check_and_reanalyze_stale",
+            "schedule": crontab(minute=0, hour=4),  # Daily at 04:00 UTC
+            "options": {"queue": "analysis"},
+        },
     },
     # Route tasks to queues
     task_routes={

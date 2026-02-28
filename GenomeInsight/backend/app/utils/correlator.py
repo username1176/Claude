@@ -64,7 +64,10 @@ class UnifiedAnalysisResult:
         "This unified analysis is for informational purposes only and is "
         "NOT medical advice. Cross-domain correlations are based on "
         "population-level research and may not apply to your individual "
-        "situation. Consult a healthcare professional for medical decisions."
+        "situation. Microbiome analysis is an emerging science; results "
+        "vary significantly by sampling method, timing, diet, and "
+        "medication. A single sample provides a snapshot, not a definitive "
+        "assessment. Consult a healthcare professional for medical decisions."
     )
 
     def to_dict(self) -> dict:
@@ -240,6 +243,59 @@ _MULTI_DOMAIN_RULES: list[dict] = [
             "Increase butyrate-producing foods (resistant starch, cooled rice)",
             "Discuss preventive monitoring with a gastroenterologist",
             "Anti-inflammatory diet with emphasis on soluble fiber",
+        ],
+    },
+    # ---- Epigenetics + Microbiome + Blood (Gut-axis methylation) ----
+    {
+        "id": "gut_axis_methylation",
+        "conditions": [
+            {"domain": "epigenetics", "check": "has_overlay_gene", "gene": "SLC6A4"},
+            {"domain": "microbiome", "check": "diversity_below", "metric": "shannon", "threshold": 3.0},
+            {"domain": "blood", "check": "marker_flagged", "marker_aliases": ["vitamin_d", "25_oh_d", "vit_d"], "flag": "L"},
+        ],
+        "title": "Microbiome-gut axis: Epigenetic changes may explain impaired blood markers",
+        "body": (
+            "Your epigenetic profile shows altered SLC6A4 (serotonin transporter) "
+            "regulation. With low gut diversity (Shannon: {microbiome_shannon:.2f}) and "
+            "low Vitamin D ({blood_value} {blood_unit}), this suggests a gut-brain-immune "
+            "axis disruption. ~95% of serotonin is produced in the gut, and its "
+            "epigenetic regulation alongside reduced microbial diversity may impair "
+            "nutrient absorption and immune modulation."
+        ),
+        "category": "cross_domain",
+        "confidence": "medium",
+        "priority": 82,
+        "tags": ["gut_brain_axis", "epigenetics", "nutrient_absorption"],
+        "recommendations": [
+            "Discuss Vitamin D supplementation dosing with your physician",
+            "Prebiotic fiber to support microbial diversity",
+            "Sunlight exposure (15-20 min daily) for natural Vitamin D synthesis",
+        ],
+    },
+    # ---- Genome + Microbiome + Epigenetics (MTHFR methylation-gut axis) ----
+    {
+        "id": "mthfr_gut_methylation",
+        "conditions": [
+            {"domain": "genome", "check": "has_variant", "rsid": "rs1801133", "gene": "MTHFR"},
+            {"domain": "microbiome", "check": "genus_below", "genus": "bifidobacterium", "threshold": 0.03},
+            {"domain": "epigenetics", "check": "has_overlay_gene", "gene": "MTHFR"},
+        ],
+        "title": "MTHFR variant + epigenetic change + low Bifidobacterium: folate-gut axis",
+        "body": (
+            "Your MTHFR variant ({genome_genotype}) reduces folate metabolism efficiency, "
+            "and your epigenetic profile shows altered MTHFR regulation. Low "
+            "Bifidobacterium ({microbiome_abundance:.1%}) compounds this, as these "
+            "bacteria synthesize folate and B-vitamins in the gut. This triple "
+            "interaction may impair methylation capacity system-wide."
+        ),
+        "category": "cross_domain",
+        "confidence": "medium",
+        "priority": 83,
+        "tags": ["methylation", "folate", "gut_health"],
+        "recommendations": [
+            "Methylfolate (5-MTHF) supplementation — consult physician for dosing",
+            "Increase Bifidobacterium via fermented foods or targeted probiotics",
+            "Folate-rich foods: dark leafy greens, legumes, citrus",
         ],
     },
     # ---- Microbiome + Wearable (Sleep-gut cycle) ----
