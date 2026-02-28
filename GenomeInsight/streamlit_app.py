@@ -40,16 +40,19 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Wabi Sabi CSS
+# Wabi Sabi CSS — fonts loaded via <link>, styles via <style>
 # ---------------------------------------------------------------------------
+st.markdown(
+    '<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&family=Noto+Serif+JP:wght@300;400;500&display=swap" rel="stylesheet">',
+    unsafe_allow_html=True,
+)
+
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&family=Noto+Serif+JP:wght@300;400;500&display=swap');
-
     /* ── Global ── */
-    .stApp {
-        background: #F5F5F0;
-        font-family: 'Inter', sans-serif;
+    .stApp, [data-testid="stAppViewContainer"] {
+        background-color: #F5F5F0 !important;
+        font-family: 'Inter', sans-serif !important;
     }
 
     /* ── Linen texture overlay ── */
@@ -210,40 +213,136 @@ st.markdown("""
     }
 
     /* ── Sidebar ── */
-    [data-testid="stSidebar"] {
-        background: rgba(245, 245, 240, 0.95);
-        border-right: 1px solid rgba(139, 154, 127, 0.15);
+    section[data-testid="stSidebar"] {
+        background-color: #EDE8E0 !important;
+        border-right: 1px solid rgba(139, 154, 127, 0.2) !important;
     }
-    [data-testid="stSidebar"] .stMarkdown h2 {
-        font-family: 'Crimson Text', serif;
-        color: #5C4B3F;
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        background-color: #EDE8E0 !important;
+    }
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] .stMarkdown h2 {
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
         letter-spacing: -0.01em;
     }
 
-    /* ── Streamlit overrides ── */
-    .stMetricLabel { font-family: 'Inter', sans-serif !important; }
-    .stMetricValue { font-family: 'Crimson Text', serif !important; color: #5C4B3F !important; }
+    /* ── Streamlit deep overrides ── */
+    .stApp p, .stApp span, .stApp div, .stApp label {
+        font-family: 'Inter', sans-serif;
+    }
+    [data-testid="stMetricLabel"] { font-family: 'Inter', sans-serif !important; color: #8B9A7F !important; }
+    [data-testid="stMetricValue"] { font-family: 'Crimson Text', serif !important; color: #5C4B3F !important; font-size: 1.8rem !important; }
+    [data-testid="stMetricDelta"] { font-family: 'Inter', sans-serif !important; }
 
-    h1, h2, h3 {
+    h1, h2, h3, .stApp h1, .stApp h2, .stApp h3 {
         font-family: 'Crimson Text', serif !important;
         color: #5C4B3F !important;
     }
 
-    .stDataFrame {
+    /* ── Main content area ── */
+    [data-testid="stMainBlockContainer"] {
+        background-color: #F5F5F0 !important;
+    }
+    .stMain, [data-testid="stMain"] {
+        background-color: #F5F5F0 !important;
+    }
+    header[data-testid="stHeader"] {
+        background-color: rgba(245, 245, 240, 0.9) !important;
+        backdrop-filter: blur(8px);
+    }
+
+    /* ── Metric containers ── */
+    [data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.45) !important;
+        border: 1px solid rgba(139, 154, 127, 0.12);
+        border-radius: 8px 2px 8px 2px;
+        padding: 0.8rem !important;
+    }
+
+    /* ── DataFrames ── */
+    .stDataFrame, [data-testid="stDataFrame"] {
+        border-radius: 8px 2px 8px 2px;
+        overflow: hidden;
+        border: 1px solid rgba(139, 154, 127, 0.12);
+    }
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        border-bottom: 1px solid rgba(139, 154, 127, 0.2);
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
+    }
+
+    /* ── Radio buttons in sidebar ── */
+    .stRadio label {
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
+        font-size: 1rem !important;
+    }
+
+    /* ── Toggle switches ── */
+    .stToggle label span {
+        font-family: 'Inter', sans-serif !important;
+        color: #5C4B3F !important;
+    }
+
+    /* ── Expanders ── */
+    [data-testid="stExpander"] {
+        border: 1px solid rgba(139, 154, 127, 0.15) !important;
+        border-radius: 4px 12px 4px 12px !important;
+        background: rgba(255, 255, 255, 0.3) !important;
+    }
+    [data-testid="stExpander"] summary {
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
+    }
+
+    /* ── Code block ── */
+    .stCodeBlock, [data-testid="stCodeBlock"] {
+        border-radius: 4px 12px 4px 12px !important;
+        border: 1px solid rgba(139, 154, 127, 0.15) !important;
+    }
+
+    /* ── Info/Success/Error boxes ── */
+    [data-testid="stAlert"] {
+        border-radius: 4px 12px 4px 12px !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* ── Captions ── */
+    .stCaption, [data-testid="stCaption"] {
+        font-family: 'Crimson Text', serif !important;
+        font-style: italic;
+        color: #A8A8A8 !important;
+    }
+
+    /* ── Charts ── */
+    [data-testid="stVegaLiteChart"] {
         border-radius: 8px 2px 8px 2px;
         overflow: hidden;
     }
 
-    /* ── Code block ── */
-    .stCodeBlock {
-        border-radius: 4px 12px 4px 12px;
-        border: 1px solid rgba(139, 154, 127, 0.15);
+    /* ── Markdown tables ── */
+    .stMarkdown table {
+        border-collapse: collapse;
+    }
+    .stMarkdown table th {
+        background: rgba(139, 154, 127, 0.1) !important;
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
+        border-bottom: 2px solid rgba(139, 154, 127, 0.3) !important;
+    }
+    .stMarkdown table td {
+        border-bottom: 1px solid rgba(139, 154, 127, 0.1) !important;
     }
 
-    /* ── Expander ── */
-    .streamlit-expanderHeader {
-        font-family: 'Crimson Text', serif;
-        color: #5C4B3F;
+    /* ── Divider override ── */
+    [data-testid="stHorizontalBlock"], hr {
+        border-color: rgba(139, 154, 127, 0.15) !important;
     }
 
     /* ── Footer ── */
