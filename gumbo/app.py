@@ -5,6 +5,13 @@ Run with:  streamlit run gumbo/app.py
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import streamlit as st
 
 from gumbo.models import (

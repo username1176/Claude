@@ -17,6 +17,15 @@ Features:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure the repo root is on sys.path so "from gumbo.X" imports resolve
+# regardless of how Streamlit launches this script.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import json
 import logging
 from io import BytesIO
