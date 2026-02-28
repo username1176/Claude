@@ -1,7 +1,13 @@
 """Celery worker entry point.
 
-Usage:
+Usage (worker):
     celery -A celery_worker.celery worker --loglevel=info
+
+Usage (beat scheduler):
+    celery -A celery_worker.celery beat --loglevel=info
+
+Usage (combined worker + beat):
+    celery -A celery_worker.celery worker --beat --loglevel=info
 """
 
 from dotenv import load_dotenv
@@ -9,6 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from celery import Celery
+from celery.schedules import crontab
 from app import create_app
 
 flask_app = create_app()
@@ -22,17 +29,33 @@ celery.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Task execution limits
+    task_soft_time_limit=300,  # 5 min soft limit
+    task_time_limit=600,       # 10 min hard limit
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
     # Celery Beat periodic task schedule
     beat_schedule={
         "wearable-sync-all-users": {
             "task": "app.tasks.wearable_tasks.sync_all_active_connections",
-            "schedule": 6 * 60 * 60,  # Every 6 hours
+            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+            "options": {"queue": "wearables"},
         },
         "daily-insight-generation": {
             "task": "app.tasks.wearable_tasks.generate_daily_insights",
-            "schedule": 24 * 60 * 60,  # Every 24 hours
+            "schedule": crontab(minute=30, hour=2),  # Daily at 02:30 UTC
+            "options": {"queue": "insights"},
         },
     },
+    # Route tasks to queues
+    task_routes={
+        "app.tasks.wearable_tasks.*": {"queue": "wearables"},
+        "app.tasks.genome_tasks.*": {"queue": "analysis"},
+        "app.tasks.epigenetics_tasks.*": {"queue": "analysis"},
+        "app.tasks.blood_tasks.*": {"queue": "analysis"},
+    },
+    # Default queue for unmatched tasks
+    task_default_queue="default",
 )
 
 

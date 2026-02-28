@@ -131,9 +131,48 @@ def create_app(config_name: str | None = None):
     def internal_error(_e):
         return jsonify({"error": "Internal server error."}), 500
 
-    # Health check
+    # Health check — includes service connectivity status
     @flask_app.route("/health")
     def health():
-        return jsonify({"status": "ok"})
+        status = {"status": "ok", "services": {}}
+
+        # Database
+        try:
+            db.session.execute(db.text("SELECT 1"))
+            status["services"]["database"] = "ok"
+        except Exception:
+            status["services"]["database"] = "error"
+            status["status"] = "degraded"
+
+        # Redis / Celery broker (non-critical)
+        import redis as redis_lib
+        try:
+            r = redis_lib.from_url(flask_app.config["CELERY_BROKER_URL"], socket_timeout=2)
+            r.ping()
+            status["services"]["redis"] = "ok"
+        except Exception:
+            status["services"]["redis"] = "unavailable"
+
+        return jsonify(status)
 
     return flask_app
+
+
+def init_celery(flask_app, celery_app):
+    """Bind a Celery instance to the Flask application context.
+
+    Call this from ``celery_worker.py`` so that every Celery task
+    automatically has access to the Flask app context, database, etc.
+    """
+    celery_app.conf.update(
+        broker_url=flask_app.config["CELERY_BROKER_URL"],
+        result_backend=flask_app.config["CELERY_RESULT_BACKEND"],
+    )
+
+    class FlaskTask(celery_app.Task):
+        def __call__(self, *args, **kwargs):
+            with flask_app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery_app.Task = FlaskTask
+    return celery_app

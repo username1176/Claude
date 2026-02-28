@@ -15,8 +15,14 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build:
@@ -36,11 +42,16 @@ services:
     volumes:
       - redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   celery:
     build: ./backend
     container_name: genomeinsight-celery
-    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2
+    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2 -Q default,analysis,wearables,insights
     env_file: .env
     environment:
       - FLASK_ENV=production
@@ -49,8 +60,28 @@ services:
     volumes:
       - backend-data:/app/data
     depends_on:
-      - redis
-      - backend
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-beat:
+    build: ./backend
+    container_name: genomeinsight-celery-beat
+    command: celery -A celery_worker.celery beat --loglevel=info
+    env_file: .env
+    environment:
+      - FLASK_ENV=production
+      - SQLALCHEMY_DATABASE_URI=sqlite:///data/db/genomeinsight.db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

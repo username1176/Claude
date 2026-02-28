@@ -53,9 +53,22 @@ export default function DisclaimerModal() {
           genetics — including environment, lifestyle, and epigenetics — influence
           health outcomes.
         </Typography>
+        <Typography variant="body2" paragraph>
+          <strong>Wearable Data:</strong> Activity, sleep, heart rate, and other
+          metrics are pulled from connected devices on a daily schedule. This
+          data is encrypted at rest and used only for cross-domain insights. It
+          is not shared with third parties.
+        </Typography>
+        <Typography variant="body2" paragraph>
+          <strong>Epigenetic Analysis:</strong> Histone modification and DNA
+          methylation analyses are experimental and based on publicly available
+          reference datasets (ENCODE, Roadmap Epigenomics). Results may not
+          reflect your current epigenetic state.
+        </Typography>
         <Typography variant="body2" paragraph sx={{ fontWeight: 600 }}>
           Always consult a qualified healthcare provider before making any
-          health decisions based on genetic or blood test information.
+          health decisions based on genetic, blood, epigenetic, or wearable
+          data.
         </Typography>
         <FormControlLabel
           control={
