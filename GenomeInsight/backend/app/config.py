@@ -54,6 +54,12 @@ class Config:
     # Redis cache
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
+    # Microbiome upload limit
+    MAX_MICROBIOME_FILE_SIZE_BYTES = (
+        int(os.environ.get("MAX_MICROBIOME_FILE_SIZE_MB", "200")) * 1024 * 1024
+    )
+    NMDC_API_BASE = os.environ.get("NMDC_API_BASE", "https://api.microbiomedata.org")
+
     # External APIs
     NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")

@@ -25,8 +25,9 @@ cyvcf2==0.31.1
 PyPDF2==3.0.1
 pandas==2.2.3
 
-# Epigenetics parsing
+# Epigenetics / Microbiome parsing
 biopython==1.84
+scipy==1.14.1
 
 # Encryption
 cryptography==44.0.0

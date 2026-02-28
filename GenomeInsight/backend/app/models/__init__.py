@@ -19,4 +19,9 @@ from app.models.wearable import (  # noqa: F401
     DailyWearableData,
     DailyInsight,
 )
+from app.models.microbiome import (  # noqa: F401
+    MicrobiomeUpload,
+    MicrobiomeAnalysis,
+    MicrobiomeTaxon,
+)
 from app.models.audit import AuditLog  # noqa: F401

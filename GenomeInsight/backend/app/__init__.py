@@ -73,6 +73,7 @@ def create_app(config_name: str | None = None):
     from app.api.blood import blood_bp
     from app.api.epigenetics import epigenetics_bp
     from app.api.wearables import wearables_bp, insights_bp
+    from app.api.microbiome import microbiome_bp
 
     flask_app.register_blueprint(auth_bp)
     flask_app.register_blueprint(genome_bp)
@@ -80,6 +81,7 @@ def create_app(config_name: str | None = None):
     flask_app.register_blueprint(epigenetics_bp)
     flask_app.register_blueprint(wearables_bp)
     flask_app.register_blueprint(insights_bp)
+    flask_app.register_blueprint(microbiome_bp)
 
     # Create tables (use Alembic migrations in production instead)
     with flask_app.app_context():

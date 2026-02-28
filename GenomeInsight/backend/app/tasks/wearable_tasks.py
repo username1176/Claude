@@ -256,12 +256,16 @@ def _generate_insights_for_user(user_id: str) -> int:
     # Load epigenetic overlays
     epigenetic_overlays = _load_user_epigenetic_overlays(user_id)
 
+    # Load microbiome profile for cross-domain insights
+    microbiome_profile = _load_user_microbiome_profile(user_id)
+
     # Generate cross-domain insights
     insights = generate_cross_domain_insights(
         wearable_summaries=wearable_summaries,
         user_variants=user_variants,
         blood_markers=blood_markers,
         epigenetic_overlays=epigenetic_overlays,
+        microbiome_profile=microbiome_profile,
     )
 
     # Persist insights
@@ -421,3 +425,48 @@ def _load_user_epigenetic_overlays(user_id: str) -> list[dict]:
         return json.loads(analysis.genome_overlay_json)
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+def _load_user_microbiome_profile(user_id: str) -> dict | None:
+    """Load user's latest microbiome analysis profile.
+
+    Returns a dict with diversity, phyla_ratios, enterotype, and
+    top genera for use in cross-domain insight generation.
+    """
+    from app.models.microbiome import MicrobiomeAnalysis, MicrobiomeUpload
+
+    latest_upload = (
+        MicrobiomeUpload.query
+        .filter_by(user_id=user_id)
+        .order_by(MicrobiomeUpload.uploaded_at.desc())
+        .first()
+    )
+    if not latest_upload or not latest_upload.analysis:
+        return None
+
+    analysis = latest_upload.analysis
+    if analysis.status != "complete":
+        return None
+
+    profile: dict = {"enterotype": analysis.enterotype}
+
+    if analysis.diversity_json:
+        try:
+            profile["diversity"] = json.loads(analysis.diversity_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if analysis.composition_json:
+        try:
+            composition = json.loads(analysis.composition_json)
+            profile["composition"] = composition
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if analysis.health_insights_json:
+        try:
+            profile["insights"] = json.loads(analysis.health_insights_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return profile

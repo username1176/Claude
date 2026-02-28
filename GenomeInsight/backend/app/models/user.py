@@ -47,6 +47,9 @@ class User(db.Model):
     daily_insights = relationship(
         "DailyInsight", back_populates="user", cascade="all, delete-orphan"
     )
+    microbiome_uploads = relationship(
+        "MicrobiomeUpload", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

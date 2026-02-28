@@ -65,6 +65,14 @@ export default function DisclaimerModal() {
           reference datasets (ENCODE, Roadmap Epigenomics). Results may not
           reflect your current epigenetic state.
         </Typography>
+        <Typography variant="body2" paragraph>
+          <strong>Microbiome Analysis:</strong> Gut microbiome composition is
+          based on a single sample and varies significantly with diet,
+          medication, sample timing, and collection method. Diversity metrics
+          and taxonomy classifications are estimates, not definitive
+          diagnostics. Cross-domain correlations with genome and blood data
+          are based on population-level research.
+        </Typography>
         <Typography variant="body2" paragraph sx={{ fontWeight: 600 }}>
           Always consult a qualified healthcare provider before making any
           health decisions based on genetic, blood, epigenetic, or wearable

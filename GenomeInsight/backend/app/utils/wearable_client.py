@@ -632,6 +632,7 @@ def generate_cross_domain_insights(
     user_variants: list[dict] | None = None,
     blood_markers: list[dict] | None = None,
     epigenetic_overlays: list[dict] | None = None,
+    microbiome_profile: dict | None = None,
 ) -> list[CrossDomainInsight]:
     """Correlate wearable data with genome, blood, and epigenetic data.
 
@@ -640,6 +641,7 @@ def generate_cross_domain_insights(
         user_variants: list of dicts with rsid, gene, genotype, risk_level
         blood_markers: list of dicts with marker_name, value, unit, flag
         epigenetic_overlays: list of genome-epigenetic overlay dicts
+        microbiome_profile: optional dict with diversity, composition, enterotype
 
     Returns:
         list of CrossDomainInsight objects.
@@ -763,6 +765,35 @@ def generate_cross_domain_insights(
             insight_type="alert",
             data_sources=["wearable:sleep"],
         ))
+
+    # 4. Microbiome ↔ Wearable correlations
+    if microbiome_profile:
+        diversity = microbiome_profile.get("diversity", {})
+        shannon = diversity.get("shannon", 0)
+
+        if steps and steps < 5000 and shannon and shannon < 3.0:
+            insights.append(CrossDomainInsight(
+                title="Low activity linked to reduced gut diversity",
+                body=(
+                    f"Your step count ({steps}) and gut microbiome Shannon diversity "
+                    f"({shannon:.2f}) are both below optimal. Regular exercise is "
+                    "associated with increased microbial diversity."
+                ),
+                confidence="medium",
+                data_sources=["wearable:activity", "microbiome:diversity"],
+            ))
+
+        if total_sleep and total_sleep < 360 and shannon and shannon < 3.0:
+            insights.append(CrossDomainInsight(
+                title="Poor sleep may impact gut microbiome",
+                body=(
+                    f"Your sleep ({total_sleep} min) is below 6 hours and your "
+                    f"microbiome diversity is low (Shannon: {shannon:.2f}). "
+                    "Sleep quality directly affects gut microbiome composition."
+                ),
+                confidence="low",
+                data_sources=["wearable:sleep", "microbiome:diversity"],
+            ))
 
     return insights
 

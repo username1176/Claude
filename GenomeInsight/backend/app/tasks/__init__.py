@@ -13,3 +13,7 @@ from app.tasks.wearable_tasks import (  # noqa: F401
     sync_all_active_connections,
     generate_daily_insights,
 )
+from app.tasks.microbiome_tasks import (  # noqa: F401
+    run_microbiome_analysis,
+    schedule_weekly_reanalysis,
+)
