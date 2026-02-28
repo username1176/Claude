@@ -38,6 +38,15 @@ class User(db.Model):
     epigenetic_uploads = relationship(
         "EpigeneticUpload", back_populates="user", cascade="all, delete-orphan"
     )
+    wearable_connections = relationship(
+        "WearableConnection", back_populates="user", cascade="all, delete-orphan"
+    )
+    daily_wearable_data = relationship(
+        "DailyWearableData", back_populates="user", cascade="all, delete-orphan"
+    )
+    daily_insights = relationship(
+        "DailyInsight", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

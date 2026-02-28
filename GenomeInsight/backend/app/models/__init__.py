@@ -14,4 +14,9 @@ from app.models.epigenetics import (  # noqa: F401
     EpigeneticAnalysis,
     EpigeneticRegion,
 )
+from app.models.wearable import (  # noqa: F401
+    WearableConnection,
+    DailyWearableData,
+    DailyInsight,
+)
 from app.models.audit import AuditLog  # noqa: F401

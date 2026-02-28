@@ -22,6 +22,17 @@ celery.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Celery Beat periodic task schedule
+    beat_schedule={
+        "wearable-sync-all-users": {
+            "task": "app.tasks.wearable_tasks.sync_all_active_connections",
+            "schedule": 6 * 60 * 60,  # Every 6 hours
+        },
+        "daily-insight-generation": {
+            "task": "app.tasks.wearable_tasks.generate_daily_insights",
+            "schedule": 24 * 60 * 60,  # Every 24 hours
+        },
+    },
 )
 
 

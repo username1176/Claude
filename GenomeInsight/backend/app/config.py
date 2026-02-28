@@ -58,6 +58,11 @@ class Config:
     NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
+    # Wearable APIs (Terra / ROOK)
+    TERRA_API_KEY = os.environ.get("TERRA_API_KEY", "")
+    TERRA_DEV_ID = os.environ.get("TERRA_DEV_ID", "")
+    TERRA_REDIRECT_URI = os.environ.get("TERRA_REDIRECT_URI", "")
+
     # Rate limiting
     RATELIMIT_STORAGE_URI = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 

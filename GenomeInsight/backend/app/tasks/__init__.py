@@ -8,3 +8,8 @@ functions.
 from app.tasks.genome_tasks import run_genome_analysis  # noqa: F401
 from app.tasks.blood_tasks import run_blood_change_analysis  # noqa: F401
 from app.tasks.epigenetics_tasks import run_epigenetics_analysis  # noqa: F401
+from app.tasks.wearable_tasks import (  # noqa: F401
+    sync_wearable_connection,
+    sync_all_active_connections,
+    generate_daily_insights,
+)
