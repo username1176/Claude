@@ -18,6 +18,8 @@ import BloodtypeIcon from "@mui/icons-material/Bloodtype";
 import WatchIcon from "@mui/icons-material/Watch";
 import InsightsIcon from "@mui/icons-material/Insights";
 import FingerprintIcon from "@mui/icons-material/Fingerprint";
+import BubbleChartIcon from "@mui/icons-material/BubbleChart";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import LogoutIcon from "@mui/icons-material/Logout";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -33,6 +35,8 @@ import EpigeneticsUpload from "./components/EpigeneticsUpload";
 import WearableConnect from "./components/WearableConnect";
 import DailyInsights from "./components/DailyInsights";
 import Report from "./components/Report";
+import MicrobiomeUpload from "./components/MicrobiomeUpload";
+import UnifiedReport from "./components/UnifiedReport";
 
 const theme = createTheme({
   palette: {
@@ -104,6 +108,14 @@ function NavBar() {
           </Button>
           <Button
             component={Link}
+            to="/upload-microbiome"
+            startIcon={<BubbleChartIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Microbiome
+          </Button>
+          <Button
+            component={Link}
             to="/wearables"
             startIcon={<WatchIcon />}
             sx={{ textTransform: "none" }}
@@ -117,6 +129,14 @@ function NavBar() {
             sx={{ textTransform: "none" }}
           >
             Insights
+          </Button>
+          <Button
+            component={Link}
+            to="/unified-report"
+            startIcon={<AssessmentIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Report
           </Button>
 
           <Box sx={{ flex: 1 }} />
@@ -184,6 +204,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/upload-microbiome"
+        element={
+          <ProtectedRoute>
+            <MicrobiomeUpload />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/wearables"
         element={
           <ProtectedRoute>
@@ -204,6 +232,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Report />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/unified-report"
+        element={
+          <ProtectedRoute>
+            <UnifiedReport />
           </ProtectedRoute>
         }
       />

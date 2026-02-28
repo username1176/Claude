@@ -33,5 +33,51 @@ export const bloodAPI = {
   listMarkers: jest.fn(),
 };
 
+export const epigeneticsAPI = {
+  upload: jest.fn(),
+  listUploads: jest.fn(),
+  getUpload: jest.fn(),
+  deleteUpload: jest.fn(),
+  getAnalysis: jest.fn(),
+  getRegions: jest.fn(),
+  getGenomeOverlay: jest.fn(),
+  triggerAnalysis: jest.fn(),
+};
+
+export const microbiomeAPI = {
+  upload: jest.fn(),
+  listUploads: jest.fn(),
+  getUpload: jest.fn(),
+  deleteUpload: jest.fn(),
+  getAnalysis: jest.fn(),
+  getTaxa: jest.fn(),
+  getComposition: jest.fn(),
+  getGenomeCorrelation: jest.fn(),
+  triggerAnalysis: jest.fn(),
+  getFullAnalysis: jest.fn(),
+};
+
+export const wearablesAPI = {
+  listProviders: jest.fn(),
+  connect: jest.fn(),
+  callback: jest.fn(),
+  listConnections: jest.fn(),
+  disconnect: jest.fn(),
+  triggerSync: jest.fn(),
+  getData: jest.fn(),
+  getLatestData: jest.fn(),
+};
+
+export const insightsAPI = {
+  getDaily: jest.fn(),
+  getHistory: jest.fn(),
+  generate: jest.fn(),
+};
+
+export const analysisAPI = {
+  getDaily: jest.fn(),
+  triggerGenerate: jest.fn(),
+};
+
 const api = { interceptors: { request: { use: jest.fn() }, response: { use: jest.fn() } } };
 export default api;

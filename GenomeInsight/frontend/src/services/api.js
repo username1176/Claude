@@ -157,12 +157,46 @@ export const wearablesAPI = {
   getLatestData: () => api.get("/wearables/data/latest"),
 };
 
+// ── Microbiome ───────────────────────────────────────────────────────────
+
+export const microbiomeAPI = {
+  upload: (file, sampleType, onProgress) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sampleType) form.append("sample_type", sampleType);
+    return api.post("/microbiome/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress,
+    });
+  },
+  listUploads: () => api.get("/microbiome/uploads"),
+  getUpload: (id) => api.get(`/microbiome/uploads/${id}`),
+  deleteUpload: (id) => api.delete(`/microbiome/uploads/${id}`),
+  getAnalysis: (id) => api.get(`/microbiome/analysis/${id}`),
+  getTaxa: (id, params) =>
+    api.get(`/microbiome/analysis/${id}/taxa`, { params }),
+  getComposition: (id) =>
+    api.get(`/microbiome/analysis/${id}/composition`),
+  getGenomeCorrelation: (id) =>
+    api.get(`/microbiome/analysis/${id}/genome-correlation`),
+  triggerAnalysis: (uploadId) =>
+    api.post(`/microbiome/uploads/${uploadId}/analyze`),
+  getFullAnalysis: (id) => api.get(`/microbiome/analysis/${id}/full`),
+};
+
 // ── Insights ─────────────────────────────────────────────────────────────
 
 export const insightsAPI = {
   getDaily: () => api.get("/insights/daily"),
   getHistory: (params) => api.get("/insights/history", { params }),
   generate: () => api.post("/insights/generate"),
+};
+
+// ── Unified Analysis ─────────────────────────────────────────────────────
+
+export const analysisAPI = {
+  getDaily: () => api.get("/analysis/daily"),
+  triggerGenerate: () => api.post("/analysis/daily/generate"),
 };
 
 export default api;

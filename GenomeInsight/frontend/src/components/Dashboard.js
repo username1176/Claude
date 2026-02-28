@@ -39,8 +39,12 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
-import { genomeAPI, bloodAPI, epigeneticsAPI, wearablesAPI, insightsAPI } from "../services/api";
+import BubbleChartIcon from "@mui/icons-material/BubbleChart";
+import { genomeAPI, bloodAPI, epigeneticsAPI, wearablesAPI, insightsAPI, microbiomeAPI } from "../services/api";
 
 const RISK_COLORS = { low: "#4caf50", average: "#ff9800", elevated: "#f44336", high: "#b71c1c" };
 const CHART_COLORS = [
@@ -55,6 +59,7 @@ export default function Dashboard() {
   const [bloodTrends, setBloodTrends] = useState(null);
   const [changeAnalysis, setChangeAnalysis] = useState(null);
   const [epiUploads, setEpiUploads] = useState([]);
+  const [microbiomeUploads, setMicrobiomeUploads] = useState([]);
   const [wearableConnections, setWearableConnections] = useState([]);
   const [dailyInsights, setDailyInsights] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,16 +70,18 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [gRes, bRes, eRes, wRes, iRes] = await Promise.allSettled([
+      const [gRes, bRes, eRes, mRes, wRes, iRes] = await Promise.allSettled([
         genomeAPI.listUploads(),
         bloodAPI.listUploads(),
         epigeneticsAPI.listUploads(),
+        microbiomeAPI.listUploads(),
         wearablesAPI.listConnections(),
         insightsAPI.getDaily(),
       ]);
       if (gRes.status === "fulfilled") setGenomeUploads(gRes.value.data);
       if (bRes.status === "fulfilled") setBloodUploads(bRes.value.data);
       if (eRes.status === "fulfilled") setEpiUploads(eRes.value.data || []);
+      if (mRes.status === "fulfilled") setMicrobiomeUploads(mRes.value.data || []);
       if (wRes.status === "fulfilled") setWearableConnections(wRes.value.data || []);
       if (iRes.status === "fulfilled") setDailyInsights(iRes.value.data.insights || []);
 
@@ -114,6 +121,15 @@ export default function Dashboard() {
       setBloodUploads((prev) => prev.filter((u) => u.id !== id));
     } catch {
       setError("Failed to delete blood upload.");
+    }
+  };
+
+  const handleDeleteMicrobiome = async (id) => {
+    try {
+      await microbiomeAPI.deleteUpload(id);
+      setMicrobiomeUploads((prev) => prev.filter((u) => u.id !== id));
+    } catch {
+      setError("Failed to delete microbiome upload.");
     }
   };
 
@@ -182,10 +198,10 @@ export default function Dashboard() {
           <Card elevation={2}>
             <CardContent sx={{ textAlign: "center", py: 2 }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Wearables
+                Microbiome
               </Typography>
               <Typography variant="h4" fontWeight={700}>
-                {wearableConnections.filter((c) => c.status === "active").length}
+                {microbiomeUploads.length}
               </Typography>
             </CardContent>
           </Card>
@@ -194,10 +210,10 @@ export default function Dashboard() {
           <Card elevation={2}>
             <CardContent sx={{ textAlign: "center", py: 2 }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Markers
+                Wearables
               </Typography>
               <Typography variant="h4" fontWeight={700}>
-                {bloodTrends ? Object.keys(bloodTrends).length : 0}
+                {wearableConnections.filter((c) => c.status === "active").length}
               </Typography>
             </CardContent>
           </Card>
@@ -215,6 +231,25 @@ export default function Dashboard() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Unified report link */}
+      <Paper variant="outlined" sx={{ p: 2, mb: 3, display: "flex", alignItems: "center", gap: 2 }}>
+        <InsightsIcon color="secondary" />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" fontWeight={600}>
+            Unified Health Report
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Cross-domain correlations across genome, blood, microbiome, wearables, and epigenetics.
+          </Typography>
+        </Box>
+        <Chip
+          label="View Report"
+          color="secondary"
+          onClick={() => navigate("/unified-report")}
+          sx={{ cursor: "pointer" }}
+        />
+      </Paper>
 
       {/* Daily insights summary */}
       {dailyInsights.length > 0 && (
@@ -309,6 +344,7 @@ export default function Dashboard() {
           <Tab label="Blood Trends" />
           <Tab label="Change Analysis" />
           <Tab label="Epigenetics" />
+          <Tab label="Microbiome" />
         </Tabs>
       </Paper>
 
@@ -329,6 +365,13 @@ export default function Dashboard() {
       {tab === 2 && <BloodTrendsPanel trends={bloodTrends} />}
       {tab === 3 && <ChangeAnalysisPanel analysis={changeAnalysis} />}
       {tab === 4 && <EpigeneticsPanel uploads={epiUploads} navigate={navigate} />}
+      {tab === 5 && (
+        <MicrobiomePanel
+          uploads={microbiomeUploads}
+          onDelete={handleDeleteMicrobiome}
+          navigate={navigate}
+        />
+      )}
     </Container>
   );
 }
@@ -707,5 +750,137 @@ function EpigeneticsPanel({ uploads, navigate }) {
         </Grid>
       ))}
     </Grid>
+  );
+}
+
+/* ── Microbiome Panel ──────────────────────────────────────────────────── */
+
+const MICROBIOME_PIE_COLORS = [
+  "#8e24aa", "#1976d2", "#43a047", "#e53935", "#fb8c00",
+  "#00acc1", "#6d4c41", "#546e7a", "#d81b60", "#7cb342",
+];
+
+function MicrobiomePanel({ uploads, onDelete, navigate }) {
+  const [composition, setComposition] = useState(null);
+  const [loadingComp, setLoadingComp] = useState(false);
+
+  // Load composition for the latest analyzed upload
+  React.useEffect(() => {
+    const analyzed = uploads.find(
+      (u) => u.status === "analyzed" && u.analysis_id
+    );
+    if (!analyzed) return;
+
+    let cancelled = false;
+    setLoadingComp(true);
+    microbiomeAPI
+      .getComposition(analyzed.analysis_id)
+      .then(({ data }) => {
+        if (!cancelled) setComposition(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingComp(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uploads]);
+
+  if (!uploads || uploads.length === 0) {
+    return (
+      <Alert severity="info">
+        No microbiome data uploaded yet. Go to{" "}
+        <strong>Upload Microbiome</strong> to add a sample.
+      </Alert>
+    );
+  }
+
+  // Build pie chart data from composition
+  const phylaRaw =
+    composition?.composition?.phylum || composition?.phylum || [];
+  const pieData = Array.isArray(phylaRaw)
+    ? phylaRaw.map((p) => ({
+        name: p.name,
+        value: Math.round((p.abundance || 0) * 1000) / 10,
+      }))
+    : [];
+
+  return (
+    <Box>
+      {/* Phyla pie chart */}
+      {pieData.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Phylum Composition (Latest Sample)
+          </Typography>
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                dataKey="value"
+                nameKey="name"
+                label={({ name, value }) => `${name} ${value}%`}
+                labelLine
+              >
+                {pieData.map((_, idx) => (
+                  <Cell
+                    key={idx}
+                    fill={MICROBIOME_PIE_COLORS[idx % MICROBIOME_PIE_COLORS.length]}
+                  />
+                ))}
+              </Pie>
+              <ReTooltip formatter={(val) => `${val}%`} />
+            </PieChart>
+          </ResponsiveContainer>
+        </Paper>
+      )}
+
+      {loadingComp && (
+        <LinearProgress sx={{ mb: 2 }} />
+      )}
+
+      {/* Upload list */}
+      <Typography variant="h6" gutterBottom>
+        Upload History
+      </Typography>
+      <Grid container spacing={2}>
+        {uploads.map((u) => (
+          <Grid item xs={12} key={u.id}>
+            <Card variant="outlined">
+              <CardContent
+                sx={{ display: "flex", alignItems: "center", gap: 2 }}
+              >
+                <BubbleChartIcon sx={{ color: "#8e24aa" }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {u.filename}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {u.sample_type && `Sample: ${u.sample_type} | `}
+                    Uploaded: {new Date(u.uploaded_at).toLocaleDateString()}
+                    {u.file_size_bytes &&
+                      ` | ${(u.file_size_bytes / 1024).toFixed(0)} KB`}
+                  </Typography>
+                </Box>
+                <Chip
+                  label={u.status}
+                  color={u.status === "analyzed" ? "success" : "info"}
+                  size="small"
+                />
+                <Tooltip title="Delete">
+                  <IconButton color="error" onClick={() => onDelete(u.id)}>
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
   );
 }
