@@ -15,6 +15,9 @@ import ScienceIcon from "@mui/icons-material/Science";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import BiotechIcon from "@mui/icons-material/Biotech";
 import BloodtypeIcon from "@mui/icons-material/Bloodtype";
+import WatchIcon from "@mui/icons-material/Watch";
+import InsightsIcon from "@mui/icons-material/Insights";
+import FingerprintIcon from "@mui/icons-material/Fingerprint";
 import LogoutIcon from "@mui/icons-material/Logout";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -26,6 +29,9 @@ import Register from "./components/Register";
 import Dashboard from "./components/Dashboard";
 import GenomeUpload from "./components/GenomeUpload";
 import BloodUpload from "./components/BloodUpload";
+import EpigeneticsUpload from "./components/EpigeneticsUpload";
+import WearableConnect from "./components/WearableConnect";
+import DailyInsights from "./components/DailyInsights";
 import Report from "./components/Report";
 
 const theme = createTheme({
@@ -86,7 +92,31 @@ function NavBar() {
             startIcon={<BloodtypeIcon />}
             sx={{ textTransform: "none" }}
           >
-            Upload Blood Test
+            Blood Test
+          </Button>
+          <Button
+            component={Link}
+            to="/upload-epigenetics"
+            startIcon={<FingerprintIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Epigenetics
+          </Button>
+          <Button
+            component={Link}
+            to="/wearables"
+            startIcon={<WatchIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Wearables
+          </Button>
+          <Button
+            component={Link}
+            to="/insights"
+            startIcon={<InsightsIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            Insights
           </Button>
 
           <Box sx={{ flex: 1 }} />
@@ -142,6 +172,30 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <BloodUpload />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/upload-epigenetics"
+        element={
+          <ProtectedRoute>
+            <EpigeneticsUpload />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/wearables"
+        element={
+          <ProtectedRoute>
+            <WearableConnect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/insights"
+        element={
+          <ProtectedRoute>
+            <DailyInsights />
           </ProtectedRoute>
         }
       />

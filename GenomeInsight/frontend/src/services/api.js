@@ -117,4 +117,52 @@ export const bloodAPI = {
   listMarkers: () => api.get("/blood/markers"),
 };
 
+// ── Epigenetics ──────────────────────────────────────────────────────────
+
+export const epigeneticsAPI = {
+  upload: (file, dataType, assayType, tissueType, onProgress) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("data_type", dataType);
+    if (assayType) form.append("assay_type", assayType);
+    if (tissueType) form.append("tissue_type", tissueType);
+    return api.post("/epigenetics/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress,
+    });
+  },
+  listUploads: () => api.get("/epigenetics/uploads"),
+  getUpload: (id) => api.get(`/epigenetics/uploads/${id}`),
+  deleteUpload: (id) => api.delete(`/epigenetics/uploads/${id}`),
+  getAnalysis: (id) => api.get(`/epigenetics/analysis/${id}`),
+  getRegions: (id, params) =>
+    api.get(`/epigenetics/analysis/${id}/regions`, { params }),
+  getGenomeOverlay: (id) =>
+    api.get(`/epigenetics/analysis/${id}/genome-overlay`),
+  triggerAnalysis: (uploadId) =>
+    api.post(`/epigenetics/uploads/${uploadId}/analyze`),
+};
+
+// ── Wearables ────────────────────────────────────────────────────────────
+
+export const wearablesAPI = {
+  listProviders: () => api.get("/wearables/providers"),
+  connect: (provider) => api.post("/wearables/connect", { provider }),
+  callback: (code, provider) =>
+    api.post("/wearables/callback", { code, provider }),
+  listConnections: () => api.get("/wearables/connections"),
+  disconnect: (id) => api.delete(`/wearables/connections/${id}`),
+  triggerSync: (id) => api.post(`/wearables/connections/${id}/sync`),
+  getData: (params) => api.get("/wearables/data", { params }),
+  getLatestData: () => api.get("/wearables/data/latest"),
+};
+
+// ── Insights ─────────────────────────────────────────────────────────────
+
+export const insightsAPI = {
+  getDaily: () => api.get("/insights/daily"),
+  getHistory: (params) => api.get("/insights/history", { params }),
+  generate: () => api.post("/insights/generate"),
+};
+
 export default api;

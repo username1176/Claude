@@ -24,6 +24,11 @@ import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingFlatIcon from "@mui/icons-material/TrendingFlat";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import WatchIcon from "@mui/icons-material/Watch";
+import BiotechIcon from "@mui/icons-material/Biotech";
+import InsightsIcon from "@mui/icons-material/Insights";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   LineChart,
   Line,
@@ -35,7 +40,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { genomeAPI, bloodAPI } from "../services/api";
+import { genomeAPI, bloodAPI, epigeneticsAPI, wearablesAPI, insightsAPI } from "../services/api";
 
 const RISK_COLORS = { low: "#4caf50", average: "#ff9800", elevated: "#f44336", high: "#b71c1c" };
 const CHART_COLORS = [
@@ -49,6 +54,9 @@ export default function Dashboard() {
   const [bloodUploads, setBloodUploads] = useState([]);
   const [bloodTrends, setBloodTrends] = useState(null);
   const [changeAnalysis, setChangeAnalysis] = useState(null);
+  const [epiUploads, setEpiUploads] = useState([]);
+  const [wearableConnections, setWearableConnections] = useState([]);
+  const [dailyInsights, setDailyInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -57,15 +65,22 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [gRes, bRes] = await Promise.all([
+      const [gRes, bRes, eRes, wRes, iRes] = await Promise.allSettled([
         genomeAPI.listUploads(),
         bloodAPI.listUploads(),
+        epigeneticsAPI.listUploads(),
+        wearablesAPI.listConnections(),
+        insightsAPI.getDaily(),
       ]);
-      setGenomeUploads(gRes.data);
-      setBloodUploads(bRes.data);
+      if (gRes.status === "fulfilled") setGenomeUploads(gRes.value.data);
+      if (bRes.status === "fulfilled") setBloodUploads(bRes.value.data);
+      if (eRes.status === "fulfilled") setEpiUploads(eRes.value.data || []);
+      if (wRes.status === "fulfilled") setWearableConnections(wRes.value.data || []);
+      if (iRes.status === "fulfilled") setDailyInsights(iRes.value.data.insights || []);
 
       // Fetch blood trends if there are uploads
-      if (bRes.data.length > 0) {
+      const bData = bRes.status === "fulfilled" ? bRes.value.data : [];
+      if (bData.length > 0) {
         const [tRes, cRes] = await Promise.allSettled([
           bloodAPI.getTrends(),
           bloodAPI.analyzeChanges(),
@@ -126,52 +141,174 @@ export default function Dashboard() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {/* Summary cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={4}>
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={6} sm={4} md={2}>
           <Card elevation={2}>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Genome Uploads
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Genomes
               </Typography>
-              <Typography variant="h3" fontWeight={700}>
+              <Typography variant="h4" fontWeight={700}>
                 {genomeUploads.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={6} sm={4} md={2}>
           <Card elevation={2}>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
                 Blood Tests
               </Typography>
-              <Typography variant="h3" fontWeight={700}>
+              <Typography variant="h4" fontWeight={700}>
                 {bloodUploads.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={6} sm={4} md={2}>
           <Card elevation={2}>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Markers Tracked
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Epigenetics
               </Typography>
-              <Typography variant="h3" fontWeight={700}>
+              <Typography variant="h4" fontWeight={700}>
+                {epiUploads.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Card elevation={2}>
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Wearables
+              </Typography>
+              <Typography variant="h4" fontWeight={700}>
+                {wearableConnections.filter((c) => c.status === "active").length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Card elevation={2}>
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Markers
+              </Typography>
+              <Typography variant="h4" fontWeight={700}>
                 {bloodTrends ? Object.keys(bloodTrends).length : 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Card elevation={2}>
+            <CardContent sx={{ textAlign: "center", py: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Insights
+              </Typography>
+              <Typography variant="h4" fontWeight={700}>
+                {dailyInsights.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
+      {/* Daily insights summary */}
+      {dailyInsights.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+            <InsightsIcon color="primary" />
+            <Typography variant="h6">Today's Insights</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Chip
+              label={`${dailyInsights.filter((i) => i.insight_type === "alert").length} alerts`}
+              color="error"
+              size="small"
+              variant="outlined"
+              sx={{ display: dailyInsights.some((i) => i.insight_type === "alert") ? "flex" : "none" }}
+            />
+            <Chip
+              label="View All"
+              size="small"
+              color="primary"
+              variant="outlined"
+              onClick={() => navigate("/insights")}
+              sx={{ cursor: "pointer" }}
+            />
+          </Box>
+          <Grid container spacing={1}>
+            {dailyInsights.slice(0, 4).map((insight, idx) => (
+              <Grid item xs={12} sm={6} key={insight.id || idx}>
+                <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start", p: 1, borderRadius: 1, bgcolor: "grey.50" }}>
+                  {insight.insight_type === "alert" ? (
+                    <WarningAmberIcon fontSize="small" color="error" />
+                  ) : (
+                    <CheckCircleIcon fontSize="small" color="success" />
+                  )}
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {insight.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {insight.body?.slice(0, 100)}{insight.body?.length > 100 ? "..." : ""}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </Paper>
+      )}
+
+      {/* Wearable connections summary */}
+      {wearableConnections.filter((c) => c.status === "active").length > 0 && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+            <WatchIcon color="primary" />
+            <Typography variant="h6">Connected Wearables</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Chip
+              label="Manage"
+              size="small"
+              color="primary"
+              variant="outlined"
+              onClick={() => navigate("/wearables")}
+              sx={{ cursor: "pointer" }}
+            />
+          </Box>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {wearableConnections
+              .filter((c) => c.status === "active")
+              .map((conn) => (
+                <Chip
+                  key={conn.id}
+                  icon={<CheckCircleIcon />}
+                  label={conn.provider_display_name || conn.provider}
+                  color="success"
+                  variant="outlined"
+                  size="small"
+                />
+              ))}
+          </Box>
+        </Paper>
+      )}
+
       {/* Tabs */}
       <Paper elevation={1} sx={{ mb: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth">
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
           <Tab label="Genome History" />
           <Tab label="Blood History" />
           <Tab label="Blood Trends" />
           <Tab label="Change Analysis" />
+          <Tab label="Epigenetics" />
         </Tabs>
       </Paper>
 
@@ -191,6 +328,7 @@ export default function Dashboard() {
       )}
       {tab === 2 && <BloodTrendsPanel trends={bloodTrends} />}
       {tab === 3 && <ChangeAnalysisPanel analysis={changeAnalysis} />}
+      {tab === 4 && <EpigeneticsPanel uploads={epiUploads} navigate={navigate} />}
     </Container>
   );
 }
@@ -526,5 +664,48 @@ function ChangeAnalysisPanel({ analysis }) {
         </Paper>
       )}
     </Box>
+  );
+}
+
+/* ── Epigenetics Panel ─────────────────────────────────────────────────── */
+
+function EpigeneticsPanel({ uploads, navigate }) {
+  if (!uploads || uploads.length === 0) {
+    return (
+      <Alert severity="info">
+        No epigenetic data uploaded yet. Go to{" "}
+        <strong>Upload Epigenetics</strong> to add histone or methylation data.
+      </Alert>
+    );
+  }
+
+  return (
+    <Grid container spacing={2}>
+      {uploads.map((u) => (
+        <Grid item xs={12} key={u.id}>
+          <Card variant="outlined">
+            <CardContent sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <BiotechIcon color="secondary" />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {u.filename}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Type: {u.data_type}
+                  {u.assay_type && ` | Assay: ${u.assay_type}`}
+                  {u.tissue_type && ` | Tissue: ${u.tissue_type}`}
+                  {" | "}Uploaded: {new Date(u.uploaded_at).toLocaleDateString()}
+                </Typography>
+              </Box>
+              <Chip
+                label={u.status}
+                color={u.status === "analyzed" ? "success" : "info"}
+                size="small"
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
   );
 }
