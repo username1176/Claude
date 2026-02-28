@@ -1,4 +1,4 @@
-"""Blood test upload, results, and trend endpoints."""
+"""Blood test upload, parsing, results, trend, and change-analysis endpoints."""
 
 from datetime import date
 
@@ -26,12 +26,34 @@ def _audit(action: str, **kwargs):
     db.session.add(log)
 
 
-# ── Upload ───────────────────────────────────────────────────────────────────
+def _result_to_dict(r: BloodResult) -> dict:
+    """Serialise a BloodResult to a JSON-safe dict."""
+    return {
+        "id": r.id,
+        "marker_name": r.marker_name,
+        "marker_display_name": r.marker_display_name,
+        "value": r.value,
+        "unit": r.unit,
+        "reference_low": r.reference_low,
+        "reference_high": r.reference_high,
+        "flag": r.flag,
+    }
+
+
+# ── Upload (POST /api/v1/blood/upload) ──────────────────────────────────────
 
 
 @blood_bp.route("/upload", methods=["POST"])
 @login_required
 def upload_blood():
+    """Accept a PDF or CSV blood-test file, encrypt it, parse markers, and
+    persist the results.
+
+    Form fields:
+        file       – multipart file (required)
+        test_date  – ISO 8601 date string YYYY-MM-DD (required)
+        lab_name   – optional lab name
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file provided. Use multipart field 'file'."}), 400
 
@@ -54,6 +76,10 @@ def upload_blood():
     lab_name = request.form.get("lab_name", "").strip() or None
     user = g.current_user
 
+    # ── Read raw bytes before encryption (for parsing) ───────────────────
+    raw_bytes = file.read()
+    file.seek(0)  # Rewind so save_upload can read again
+
     try:
         encrypted_path, _sha256, _size = save_upload(
             file=file,
@@ -75,22 +101,67 @@ def upload_blood():
         status="uploaded",
     )
     db.session.add(upload)
+    db.session.flush()  # Populate upload.id
+
+    # ── Parse blood markers from the raw file ────────────────────────────
+    from app.utils.blood_parser import parse_blood_file
+
+    parsed_markers = parse_blood_file(raw_bytes, extension)
+    for pm in parsed_markers:
+        db.session.add(BloodResult(
+            upload_id=upload.id,
+            marker_name=pm.marker_name,
+            marker_display_name=pm.marker_display_name,
+            value=pm.value,
+            unit=pm.unit,
+            reference_low=pm.reference_low,
+            reference_high=pm.reference_high,
+            flag=pm.flag,
+        ))
+
+    if parsed_markers:
+        upload.status = "parsed"
+
     _audit("upload_blood", resource_type="BloodUpload", resource_id=upload.id)
     db.session.commit()
+
+    # Dispatch async change-analysis if there are previous uploads
+    celery_task_id = None
+    prev_count = (
+        BloodUpload.query
+        .filter(
+            BloodUpload.user_id == user.id,
+            BloodUpload.id != upload.id,
+        )
+        .count()
+    )
+    if prev_count > 0 and parsed_markers:
+        try:
+            from app.tasks.blood_tasks import run_blood_change_analysis
+            task = run_blood_change_analysis.delay(upload.id)
+            celery_task_id = task.id
+        except Exception:
+            pass  # Celery/Redis not available — user can trigger manually
 
     return (
         jsonify(
             {
                 "upload_id": upload.id,
                 "status": upload.status,
-                "message": "File received. Parsing will begin shortly.",
+                "markers_parsed": len(parsed_markers),
+                "task_id": celery_task_id,
+                "message": (
+                    f"File received and {len(parsed_markers)} markers parsed."
+                    if parsed_markers
+                    else "File received. No markers could be auto-parsed — use PUT to enter results manually."
+                ),
             }
         ),
         202,
     )
 
 
-# ── List uploads ─────────────────────────────────────────────────────────────
+# ── List uploads ────────────────────────────────────────────────────────────
 
 
 @blood_bp.route("/uploads", methods=["GET"])
@@ -118,7 +189,7 @@ def list_uploads():
     )
 
 
-# ── Get upload + parsed results ──────────────────────────────────────────────
+# ── Get upload + parsed results ─────────────────────────────────────────────
 
 
 @blood_bp.route("/uploads/<upload_id>", methods=["GET"])
@@ -139,24 +210,12 @@ def get_upload(upload_id: str):
             "lab_name": upload.lab_name,
             "status": upload.status,
             "uploaded_at": upload.uploaded_at.isoformat(),
-            "results": [
-                {
-                    "id": r.id,
-                    "marker_name": r.marker_name,
-                    "marker_display_name": r.marker_display_name,
-                    "value": r.value,
-                    "unit": r.unit,
-                    "reference_low": r.reference_low,
-                    "reference_high": r.reference_high,
-                    "flag": r.flag,
-                }
-                for r in upload.results
-            ],
+            "results": [_result_to_dict(r) for r in upload.results],
         }
     )
 
 
-# ── Delete upload ────────────────────────────────────────────────────────────
+# ── Delete upload ───────────────────────────────────────────────────────────
 
 
 @blood_bp.route("/uploads/<upload_id>", methods=["DELETE"])
@@ -175,7 +234,7 @@ def delete_upload(upload_id: str):
     return jsonify({"message": "Blood upload and associated results deleted."})
 
 
-# ── Correct parsed results ───────────────────────────────────────────────────
+# ── Correct parsed results ──────────────────────────────────────────────────
 
 
 @blood_bp.route("/uploads/<upload_id>/results", methods=["PUT"])
@@ -221,7 +280,219 @@ def update_results(upload_id: str):
     return jsonify({"message": "Results updated."})
 
 
-# ── Trends (time-series) ─────────────────────────────────────────────────────
+# ── Blood history (GET /api/v1/blood/history) ───────────────────────────────
+
+
+@blood_bp.route("/history", methods=["GET"])
+@login_required
+def blood_history():
+    """Return a chronological list of uploads with per-upload result summaries
+    and inter-upload change deltas.
+    """
+    uploads = (
+        BloodUpload.query.filter_by(user_id=g.current_user.id)
+        .order_by(BloodUpload.test_date.asc())
+        .all()
+    )
+    if not uploads:
+        return jsonify({"history": [], "total_uploads": 0})
+
+    from app.utils.blood_parser import compute_deltas
+
+    history: list[dict] = []
+    prev_results: list[dict] | None = None
+
+    for upload in uploads:
+        curr_results = [_result_to_dict(r) for r in upload.results]
+
+        entry: dict = {
+            "upload_id": upload.id,
+            "filename": upload.filename_original,
+            "test_date": upload.test_date.isoformat(),
+            "lab_name": upload.lab_name,
+            "status": upload.status,
+            "result_count": len(curr_results),
+            "results": curr_results,
+            "changes": None,
+        }
+
+        if prev_results is not None and curr_results:
+            deltas = compute_deltas(prev_results, curr_results)
+            entry["changes"] = [
+                {
+                    "marker_name": d.marker_name,
+                    "marker_display_name": d.marker_display_name,
+                    "previous_value": d.previous_value,
+                    "current_value": d.current_value,
+                    "unit": d.unit,
+                    "absolute_change": d.absolute_change,
+                    "percent_change": d.percent_change,
+                    "direction": d.direction,
+                    "improved": d.improved,
+                }
+                for d in deltas
+            ]
+
+        history.append(entry)
+        if curr_results:
+            prev_results = curr_results
+
+    return jsonify({"history": history, "total_uploads": len(uploads)})
+
+
+# ── Analyze changes (POST /api/v1/blood/analyze-changes) ────────────────────
+
+
+@blood_bp.route("/analyze-changes", methods=["POST"])
+@login_required
+def analyze_changes():
+    """Compare the latest upload with the previous one (or a specified pair),
+    correlate with genome data, and return insights.
+
+    Optional JSON body:
+        current_upload_id  – defaults to the most recent upload
+        previous_upload_id – defaults to the second most recent upload
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = g.current_user.id
+
+    # Resolve current and previous uploads
+    current_upload_id = data.get("current_upload_id")
+    previous_upload_id = data.get("previous_upload_id")
+
+    if current_upload_id:
+        current_upload = BloodUpload.query.filter_by(
+            id=current_upload_id, user_id=user_id
+        ).first()
+    else:
+        current_upload = (
+            BloodUpload.query.filter_by(user_id=user_id)
+            .order_by(BloodUpload.test_date.desc())
+            .first()
+        )
+
+    if not current_upload:
+        return jsonify({"error": "No blood uploads found."}), 404
+
+    if previous_upload_id:
+        previous_upload = BloodUpload.query.filter_by(
+            id=previous_upload_id, user_id=user_id
+        ).first()
+    else:
+        previous_upload = (
+            BloodUpload.query.filter(
+                BloodUpload.user_id == user_id,
+                BloodUpload.test_date < current_upload.test_date,
+            )
+            .order_by(BloodUpload.test_date.desc())
+            .first()
+        )
+
+    # Compute marker deltas
+    from app.utils.blood_parser import compute_deltas, cross_reference_genome
+
+    curr_results = [_result_to_dict(r) for r in current_upload.results]
+
+    deltas = []
+    if previous_upload:
+        prev_results = [_result_to_dict(r) for r in previous_upload.results]
+        deltas = compute_deltas(prev_results, curr_results)
+
+    # ── Genome cross-reference ───────────────────────────────────────────
+    from app.models.genome import GenomeAnalysis, GenomeUpload, Variant
+
+    genome_insights_data: list[dict] = []
+
+    # Find the user's most recent completed genome analysis
+    latest_analysis = (
+        GenomeAnalysis.query.join(GenomeUpload)
+        .filter(
+            GenomeUpload.user_id == user_id,
+            GenomeAnalysis.status == "complete",
+        )
+        .order_by(GenomeAnalysis.completed_at.desc())
+        .first()
+    )
+
+    if latest_analysis:
+        # Collect all non-reference rsIDs
+        variants = Variant.query.filter(
+            Variant.analysis_id == latest_analysis.id,
+            Variant.rsid.isnot(None),
+            Variant.genotype != "0/0",
+        ).all()
+        user_rsids = {v.rsid for v in variants}
+
+        insights = cross_reference_genome(
+            blood_markers=curr_results,
+            user_rsids=user_rsids,
+            deltas=deltas if deltas else None,
+        )
+        genome_insights_data = [
+            {
+                "rsid": gi.rsid,
+                "risk_category": gi.risk_category,
+                "marker_name": gi.marker_name,
+                "marker_display_name": gi.marker_display_name,
+                "value": gi.value,
+                "unit": gi.unit,
+                "flag": gi.flag,
+                "insight": gi.insight,
+                "priority": gi.priority,
+            }
+            for gi in insights
+        ]
+
+    # ── Compose summary insights ─────────────────────────────────────────
+    summary_insights: list[str] = []
+    for d in deltas:
+        if d.direction == "unchanged":
+            continue
+        verb = "decreased" if d.direction == "decreased" else "increased"
+        trend = ""
+        if d.improved is True:
+            trend = " — a positive trend"
+        elif d.improved is False:
+            trend = " — worth monitoring"
+        summary_insights.append(
+            f"{d.marker_display_name} {verb} {abs(d.percent_change):.1f}%"
+            f" ({d.previous_value} → {d.current_value} {d.unit}){trend}."
+        )
+
+    _audit("analyze_blood_changes", resource_type="BloodUpload", resource_id=current_upload.id)
+    db.session.commit()
+
+    return jsonify({
+        "current_upload": {
+            "id": current_upload.id,
+            "test_date": current_upload.test_date.isoformat(),
+        },
+        "previous_upload": {
+            "id": previous_upload.id,
+            "test_date": previous_upload.test_date.isoformat(),
+        } if previous_upload else None,
+        "deltas": [
+            {
+                "marker_name": d.marker_name,
+                "marker_display_name": d.marker_display_name,
+                "previous_value": d.previous_value,
+                "current_value": d.current_value,
+                "unit": d.unit,
+                "absolute_change": d.absolute_change,
+                "percent_change": d.percent_change,
+                "direction": d.direction,
+                "previous_flag": d.previous_flag,
+                "current_flag": d.current_flag,
+                "improved": d.improved,
+            }
+            for d in deltas
+        ],
+        "genome_insights": genome_insights_data,
+        "summary": summary_insights,
+    })
+
+
+# ── Trends (time-series) ───────────────────────────────────────────────────
 
 
 @blood_bp.route("/trends", methods=["GET"])
@@ -290,7 +561,7 @@ def get_trends():
     return jsonify({"trends": trends})
 
 
-# ── Available markers for this user ──────────────────────────────────────────
+# ── Available markers for this user ─────────────────────────────────────────
 
 
 @blood_bp.route("/markers", methods=["GET"])

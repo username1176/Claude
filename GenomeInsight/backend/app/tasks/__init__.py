@@ -6,3 +6,4 @@ functions.
 """
 
 from app.tasks.genome_tasks import run_genome_analysis  # noqa: F401
+from app.tasks.blood_tasks import run_blood_change_analysis  # noqa: F401
