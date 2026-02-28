@@ -1,27 +1,9 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
-import {
-  AppBar,
-  Box,
-  Button,
-  CssBaseline,
-  Toolbar,
-  Typography,
-  ThemeProvider,
-  createTheme,
-  Container,
-} from "@mui/material";
-import ScienceIcon from "@mui/icons-material/Science";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import BiotechIcon from "@mui/icons-material/Biotech";
-import BloodtypeIcon from "@mui/icons-material/Bloodtype";
-import WatchIcon from "@mui/icons-material/Watch";
-import InsightsIcon from "@mui/icons-material/Insights";
-import FingerprintIcon from "@mui/icons-material/Fingerprint";
-import BubbleChartIcon from "@mui/icons-material/BubbleChart";
-import AssessmentIcon from "@mui/icons-material/Assessment";
-import LogoutIcon from "@mui/icons-material/Logout";
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
+import { Box, Button, CssBaseline, ThemeProvider, Container } from "@mui/material";
+import { motion, AnimatePresence } from "framer-motion";
 
+import wabiSabiTheme from "./theme/wabiSabi";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -38,227 +20,181 @@ import Report from "./components/Report";
 import MicrobiomeUpload from "./components/MicrobiomeUpload";
 import UnifiedReport from "./components/UnifiedReport";
 
-const theme = createTheme({
-  palette: {
-    primary: { main: "#1565c0" },
-    secondary: { main: "#00897b" },
-    background: { default: "#f5f7fa" },
-  },
-  typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-  },
-  shape: { borderRadius: 8 },
-});
+/* ─── Wabi Sabi Navigation ─────────────────────────────────────────────────── */
+
+const NAV_ITEMS = [
+  { path: "/", label: "Home" },
+  { path: "/upload-genome", label: "Genome" },
+  { path: "/upload-blood", label: "Blood" },
+  { path: "/upload-epigenetics", label: "Epigenetics" },
+  { path: "/upload-microbiome", label: "Microbiome" },
+  { path: "/wearables", label: "Wearables" },
+  { path: "/insights", label: "Insights" },
+  { path: "/unified-report", label: "Report" },
+];
 
 function NavBar() {
   const { isAuthenticated, user, logout } = useAuth();
+  const location = useLocation();
 
   if (!isAuthenticated) return null;
 
   return (
-    <AppBar position="static" elevation={1} sx={{ bgcolor: "white", color: "text.primary" }}>
+    <motion.nav
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+      className="sticky top-0 z-50"
+      style={{
+        backgroundColor: "rgba(250, 250, 247, 0.85)",
+        backdropFilter: "blur(12px)",
+        borderBottom: "1px solid rgba(92, 75, 63, 0.06)",
+      }}
+    >
       <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ gap: 1 }}>
-          <ScienceIcon color="primary" sx={{ mr: 0.5 }} />
-          <Typography
-            variant="h6"
-            component={Link}
-            to="/"
-            sx={{
-              textDecoration: "none",
-              color: "primary.main",
-              fontWeight: 700,
-              mr: 4,
-            }}
-          >
-            GenomeInsight
-          </Typography>
+        <div className="flex items-center py-4 gap-6">
+          {/* Logo — organic leaf/helix SVG */}
+          <Link to="/" className="no-underline flex items-center gap-2 mr-6 group">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="transition-transform duration-500 group-hover:rotate-12">
+              <circle cx="14" cy="14" r="12" stroke="#5C4B3F" strokeWidth="1.5" fill="none" opacity="0.6" />
+              <path d="M14 4 C18 8, 20 12, 14 24 C8 12, 10 8, 14 4Z" fill="#8B9A7F" opacity="0.4" />
+              <circle cx="14" cy="12" r="2.5" fill="#5C4B3F" opacity="0.5" />
+            </svg>
+            <span className="font-serif text-xl font-semibold tracking-wide" style={{ color: "#5C4B3F" }}>
+              GenomeInsight
+            </span>
+          </Link>
 
-          <Button
-            component={Link}
-            to="/"
-            startIcon={<DashboardIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Dashboard
-          </Button>
-          <Button
-            component={Link}
-            to="/upload-genome"
-            startIcon={<BiotechIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Upload Genome
-          </Button>
-          <Button
-            component={Link}
-            to="/upload-blood"
-            startIcon={<BloodtypeIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Blood Test
-          </Button>
-          <Button
-            component={Link}
-            to="/upload-epigenetics"
-            startIcon={<FingerprintIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Epigenetics
-          </Button>
-          <Button
-            component={Link}
-            to="/upload-microbiome"
-            startIcon={<BubbleChartIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Microbiome
-          </Button>
-          <Button
-            component={Link}
-            to="/wearables"
-            startIcon={<WatchIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Wearables
-          </Button>
-          <Button
-            component={Link}
-            to="/insights"
-            startIcon={<InsightsIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Insights
-          </Button>
-          <Button
-            component={Link}
-            to="/unified-report"
-            startIcon={<AssessmentIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Report
-          </Button>
+          {/* Desktop navigation links */}
+          <div className="hidden md:flex items-center gap-1 flex-1">
+            {NAV_ITEMS.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link key={item.path} to={item.path} className="no-underline">
+                  <span
+                    className="font-serif text-sm px-3 py-1.5 rounded-md transition-all duration-300"
+                    style={{
+                      color: isActive ? "#5C4B3F" : "#8B7A68",
+                      backgroundColor: isActive ? "rgba(92,75,63,0.06)" : "transparent",
+                      fontWeight: isActive ? 600 : 400,
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
 
-          <Box sx={{ flex: 1 }} />
+          {/* User email + sign out */}
+          <div className="flex items-center gap-3 ml-auto">
+            <span className="hidden sm:inline font-sans text-xs tracking-wider" style={{ color: "#A8A8A8" }}>
+              {user?.email}
+            </span>
+            <Button
+              onClick={logout}
+              size="small"
+              sx={{
+                color: "#7A7267",
+                fontSize: "0.85rem",
+                "&:hover": { backgroundColor: "rgba(92, 75, 63, 0.04)" },
+              }}
+            >
+              Sign Out
+            </Button>
+          </div>
+        </div>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
-            {user?.email}
-          </Typography>
-          <Button
-            onClick={logout}
-            startIcon={<LogoutIcon />}
-            color="inherit"
-            sx={{ textTransform: "none" }}
-          >
-            Sign Out
-          </Button>
-        </Toolbar>
+        {/* Mobile nav */}
+        <div className="md:hidden flex flex-wrap gap-1 pb-3">
+          {NAV_ITEMS.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link key={item.path} to={item.path} className="no-underline">
+                <span
+                  className="font-serif text-xs px-2.5 py-1 rounded-full transition-all duration-300"
+                  style={{
+                    color: isActive ? "#5C4B3F" : "#8B7A68",
+                    backgroundColor: isActive ? "rgba(92,75,63,0.08)" : "rgba(92,75,63,0.03)",
+                    fontWeight: isActive ? 600 : 400,
+                  }}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </Container>
-    </AppBar>
+    </motion.nav>
   );
 }
+
+/* ─── Page transition wrapper ──────────────────────────────────────────────── */
+
+function PageTransition({ children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ─── Routes ───────────────────────────────────────────────────────────────── */
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/" /> : <Login />}
-      />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/" /> : <Register />}
-      />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload-genome"
-        element={
-          <ProtectedRoute>
-            <GenomeUpload />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload-blood"
-        element={
-          <ProtectedRoute>
-            <BloodUpload />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload-epigenetics"
-        element={
-          <ProtectedRoute>
-            <EpigeneticsUpload />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload-microbiome"
-        element={
-          <ProtectedRoute>
-            <MicrobiomeUpload />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/wearables"
-        element={
-          <ProtectedRoute>
-            <WearableConnect />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/insights"
-        element={
-          <ProtectedRoute>
-            <DailyInsights />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/report/:analysisId"
-        element={
-          <ProtectedRoute>
-            <Report />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/unified-report"
-        element={
-          <ProtectedRoute>
-            <UnifiedReport />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <PageTransition><Login /></PageTransition>} />
+        <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <PageTransition><Register /></PageTransition>} />
+        <Route path="/" element={<ProtectedRoute><PageTransition><Dashboard /></PageTransition></ProtectedRoute>} />
+        <Route path="/upload-genome" element={<ProtectedRoute><PageTransition><GenomeUpload /></PageTransition></ProtectedRoute>} />
+        <Route path="/upload-blood" element={<ProtectedRoute><PageTransition><BloodUpload /></PageTransition></ProtectedRoute>} />
+        <Route path="/upload-epigenetics" element={<ProtectedRoute><PageTransition><EpigeneticsUpload /></PageTransition></ProtectedRoute>} />
+        <Route path="/upload-microbiome" element={<ProtectedRoute><PageTransition><MicrobiomeUpload /></PageTransition></ProtectedRoute>} />
+        <Route path="/wearables" element={<ProtectedRoute><PageTransition><WearableConnect /></PageTransition></ProtectedRoute>} />
+        <Route path="/insights" element={<ProtectedRoute><PageTransition><DailyInsights /></PageTransition></ProtectedRoute>} />
+        <Route path="/report/:analysisId" element={<ProtectedRoute><PageTransition><Report /></PageTransition></ProtectedRoute>} />
+        <Route path="/unified-report" element={<ProtectedRoute><PageTransition><UnifiedReport /></PageTransition></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </AnimatePresence>
   );
 }
 
+/* ─── App Root ─────────────────────────────────────────────────────────────── */
+
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={wabiSabiTheme}>
       <CssBaseline />
       <ErrorBoundary>
         <BrowserRouter>
           <AuthProvider>
-            <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+            <Box sx={{ minHeight: "100vh", bgcolor: "background.default", position: "relative" }}>
               <NavBar />
               <AppRoutes />
               <DisclaimerModal />
+
+              {/* Subtle footer */}
+              <footer style={{ marginTop: "4rem", paddingBottom: "2rem", textAlign: "center" }}>
+                <div className="wabi-wave" style={{ maxWidth: "200px", margin: "0 auto 1rem" }} />
+                <p className="font-sans text-xs tracking-widest uppercase" style={{ color: "#A8A8A8" }}>
+                  GenomeInsight
+                </p>
+                <p className="font-serif text-xs italic" style={{ color: "#A8917A", marginTop: "0.25rem" }}>
+                  Imperfectly perfect health exploration
+                </p>
+              </footer>
             </Box>
           </AuthProvider>
         </BrowserRouter>

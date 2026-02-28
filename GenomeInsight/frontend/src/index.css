@@ -1,0 +1,355 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Wabi Sabi Foundation ─────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --color-linen: #F5F5F0;
+    --color-warm-white: #FAFAF7;
+    --color-earth-deep: #5C4B3F;
+    --color-earth-mid: #7A7267;
+    --color-moss: #8B9A7F;
+    --color-mist: #A0B4C2;
+    --color-clay: #C4A882;
+    --color-charcoal: #3A3632;
+    --color-stone: #A8A8A8;
+    --color-rose-earth: #B89B8F;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: "Crimson Text", "Noto Serif JP", Georgia, serif;
+    color: var(--color-charcoal);
+    background-color: var(--color-linen);
+    background-image:
+      /* Subtle linen texture via CSS noise */
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(92, 75, 63, 0.008) 2px,
+        rgba(92, 75, 63, 0.008) 4px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 3px,
+        rgba(92, 75, 63, 0.006) 3px,
+        rgba(92, 75, 63, 0.006) 6px
+      );
+    line-height: 1.7;
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Crimson Text", "Noto Serif JP", Georgia, serif;
+    font-weight: 600;
+    color: var(--color-earth-deep);
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+  }
+
+  p {
+    color: var(--color-charcoal);
+    line-height: 1.8;
+  }
+
+  a {
+    color: var(--color-moss);
+    text-decoration: none;
+    transition: color 0.3s ease;
+  }
+
+  a:hover {
+    color: var(--color-earth-deep);
+  }
+
+  ::selection {
+    background-color: rgba(139, 154, 127, 0.25);
+    color: var(--color-earth-deep);
+  }
+}
+
+/* ─── Wabi Sabi Components ─────────────────────────────────────────────────── */
+
+@layer components {
+  /* Organic card with imperfect borders */
+  .wabi-card {
+    @apply bg-white/70 backdrop-blur-sm rounded-wabi shadow-wabi
+           transition-all duration-500 ease-out;
+    border: 1px solid rgba(92, 75, 63, 0.06);
+  }
+
+  .wabi-card:hover {
+    @apply shadow-wabi-hover;
+    transform: translateY(-1px);
+  }
+
+  /* Paper-like surface */
+  .wabi-paper {
+    @apply bg-white/50 backdrop-blur-sm;
+    border: 1px solid rgba(92, 75, 63, 0.08);
+    border-radius: 0.375rem 0.5rem 0.325rem 0.45rem;
+  }
+
+  /* Ink-wash divider */
+  .wabi-divider {
+    border: none;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(92, 75, 63, 0.15) 20%,
+      rgba(92, 75, 63, 0.2) 50%,
+      rgba(92, 75, 63, 0.15) 80%,
+      transparent 100%
+    );
+    margin: 1.5rem 0;
+  }
+
+  /* Wavy divider via SVG */
+  .wabi-wave {
+    width: 100%;
+    height: 8px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 8'%3E%3Cpath d='M0 4 Q25 0 50 4 T100 4 T150 4 T200 4' fill='none' stroke='%235C4B3F' stroke-width='0.5' opacity='0.2'/%3E%3C/svg%3E");
+    background-repeat: repeat-x;
+    background-size: 200px 8px;
+    margin: 1rem 0;
+  }
+
+  /* Natural form inputs - underline style */
+  .wabi-input {
+    @apply w-full bg-transparent border-0 border-b border-earth-300
+           py-3 px-1 font-serif text-lg text-earth-800
+           placeholder:text-stone/60
+           focus:outline-none focus:border-moss-400
+           transition-colors duration-300;
+  }
+
+  .wabi-input:focus {
+    box-shadow: 0 1px 0 0 var(--color-moss);
+  }
+
+  /* Stone-like buttons */
+  .wabi-btn {
+    @apply inline-flex items-center justify-center
+           px-8 py-3 font-serif text-base tracking-wide
+           rounded-wabi transition-all duration-500 ease-out
+           cursor-pointer;
+  }
+
+  .wabi-btn-primary {
+    @apply wabi-btn bg-earth-700 text-linen-100
+           hover:bg-earth-600 hover:shadow-wabi-hover
+           active:bg-earth-800;
+  }
+
+  .wabi-btn-secondary {
+    @apply wabi-btn bg-transparent text-earth-700
+           border border-earth-300
+           hover:bg-earth-50 hover:border-earth-400;
+  }
+
+  .wabi-btn-ghost {
+    @apply wabi-btn bg-transparent text-earth-600
+           hover:bg-earth-50;
+  }
+
+  /* Serene label */
+  .wabi-label {
+    @apply text-sm font-sans text-stone tracking-wider uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* Badge / chip */
+  .wabi-badge {
+    @apply inline-flex items-center px-3 py-1
+           text-xs font-sans tracking-wider
+           rounded-full border;
+  }
+
+  .wabi-badge-moss {
+    @apply wabi-badge bg-moss-50 text-moss-600 border-moss-200;
+  }
+
+  .wabi-badge-mist {
+    @apply wabi-badge bg-mist-50 text-mist-500 border-mist-200;
+  }
+
+  .wabi-badge-clay {
+    @apply wabi-badge bg-clay-50 text-clay-500 border-clay-200;
+  }
+
+  .wabi-badge-earth {
+    @apply wabi-badge bg-earth-50 text-earth-600 border-earth-200;
+  }
+
+  /* Dropzone */
+  .wabi-dropzone {
+    @apply border-2 border-dashed border-earth-200
+           rounded-wabi-lg p-12 text-center cursor-pointer
+           transition-all duration-500 ease-out;
+    background: linear-gradient(
+      135deg,
+      rgba(250, 250, 247, 0.8) 0%,
+      rgba(245, 245, 240, 0.6) 100%
+    );
+  }
+
+  .wabi-dropzone:hover,
+  .wabi-dropzone-active {
+    @apply border-moss-400 bg-moss-50/30;
+  }
+
+  /* Disclaimer as ancient wisdom */
+  .wabi-disclaimer {
+    @apply p-5 font-serif text-sm text-earth-600 italic leading-relaxed;
+    background: linear-gradient(
+      135deg,
+      rgba(237, 229, 219, 0.4) 0%,
+      rgba(245, 239, 234, 0.3) 100%
+    );
+    border-left: 2px solid rgba(92, 75, 63, 0.15);
+    border-radius: 0 0.375rem 0.375rem 0;
+  }
+
+  /* Stat number */
+  .wabi-stat {
+    @apply text-3xl font-serif font-bold text-earth-700;
+    letter-spacing: -0.02em;
+  }
+
+  /* Ink progress bar */
+  .wabi-progress {
+    @apply w-full h-1 bg-earth-100 rounded-full overflow-hidden;
+  }
+
+  .wabi-progress-bar {
+    @apply h-full rounded-full transition-all duration-700 ease-out;
+    background: linear-gradient(
+      90deg,
+      var(--color-moss) 0%,
+      var(--color-mist) 100%
+    );
+  }
+}
+
+/* ─── Wabi Sabi Utilities ──────────────────────────────────────────────────── */
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .fade-in-up {
+    animation: fadeUp 0.6s ease-out forwards;
+  }
+
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+  .stagger-5 { animation-delay: 0.5s; }
+  .stagger-6 { animation-delay: 0.6s; }
+
+  /* Organic grain overlay */
+  .grain-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* ─── MUI Theme Overrides ──────────────────────────────────────────────────── */
+
+/* Override MUI to harmonize with Wabi Sabi */
+.MuiPaper-root {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(8px);
+  border-radius: 0.375rem !important;
+}
+
+.MuiButton-root {
+  font-family: "Crimson Text", Georgia, serif !important;
+  text-transform: none !important;
+  letter-spacing: 0.03em !important;
+  border-radius: 0.375rem !important;
+}
+
+.MuiTab-root {
+  font-family: "Crimson Text", Georgia, serif !important;
+  text-transform: none !important;
+  letter-spacing: 0.03em !important;
+  font-size: 1rem !important;
+  min-height: 52px !important;
+}
+
+.MuiInputBase-root {
+  font-family: "Crimson Text", Georgia, serif !important;
+}
+
+.MuiChip-root {
+  font-family: Inter, system-ui, sans-serif !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+}
+
+.MuiDialog-paper {
+  border-radius: 0.5rem !important;
+}
+
+/* Recharts harmonization */
+.recharts-cartesian-grid line {
+  stroke: rgba(92, 75, 63, 0.08) !important;
+}
+
+.recharts-text {
+  font-family: Inter, system-ui, sans-serif !important;
+  fill: var(--color-stone) !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: var(--color-warm-white) !important;
+  border: 1px solid rgba(92, 75, 63, 0.1) !important;
+  border-radius: 0.375rem !important;
+  box-shadow: 0 4px 12px rgba(92, 75, 63, 0.08) !important;
+  font-family: "Crimson Text", serif !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(92, 75, 63, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(92, 75, 63, 0.25);
+}

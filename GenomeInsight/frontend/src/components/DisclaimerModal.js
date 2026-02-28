@@ -1,15 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
-  Button,
-  Checkbox,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  Typography,
+  Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControlLabel, Typography,
 } from "@mui/material";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 const STORAGE_KEY = "genomeinsight_disclaimer_accepted";
 
@@ -18,10 +11,7 @@ export default function DisclaimerModal() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const accepted = localStorage.getItem(STORAGE_KEY);
-    if (!accepted) {
-      setOpen(true);
-    }
+    if (!localStorage.getItem(STORAGE_KEY)) setOpen(true);
   }, []);
 
   const handleAccept = () => {
@@ -30,72 +20,62 @@ export default function DisclaimerModal() {
   };
 
   return (
-    <Dialog open={open} maxWidth="sm" fullWidth disableEscapeKeyDown>
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <WarningAmberIcon color="warning" />
-        Important Medical Disclaimer
+    <Dialog
+      open={open}
+      maxWidth="sm"
+      fullWidth
+      disableEscapeKeyDown
+      PaperProps={{
+        sx: {
+          bgcolor: "#FAFAF7",
+          borderRadius: "0.5rem 0.75rem 0.45rem 0.625rem",
+          p: 1,
+        },
+      }}
+    >
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, fontWeight: 600 }}>
+        <span style={{ fontSize: "1.5rem", opacity: 0.4 }}>&#9670;</span>
+        A Mindful Note
       </DialogTitle>
-      <DialogContent dividers>
-        <Typography variant="body1" paragraph>
-          <strong>GenomeInsight</strong> is designed for{" "}
-          <strong>informational and educational purposes only</strong>.
+      <DialogContent dividers sx={{ borderColor: "rgba(92,75,63,0.08)" }}>
+        <Typography variant="body1" paragraph sx={{ fontWeight: 500 }}>
+          GenomeInsight is for <strong>informational and educational purposes only</strong>.
         </Typography>
-        <Typography variant="body2" paragraph>
+        <Typography variant="body2" paragraph sx={{ lineHeight: 1.8, color: "text.secondary" }}>
           This application uses publicly available genome research databases and
-          AI-generated analysis. The results provided are{" "}
-          <strong>NOT medical advice</strong> and should{" "}
-          <strong>NOT</strong> be used to diagnose, treat, cure, or prevent any
-          disease or health condition.
+          AI-generated analysis. The results are <strong>not medical advice</strong> and
+          should not be used to diagnose, treat, cure, or prevent any disease.
         </Typography>
-        <Typography variant="body2" paragraph>
-          Genetic associations represent statistical probabilities across
-          populations, not individual certainties. Many factors beyond
-          genetics — including environment, lifestyle, and epigenetics — influence
-          health outcomes.
+        <Typography variant="body2" paragraph sx={{ lineHeight: 1.8, color: "text.secondary" }}>
+          Genetic associations represent statistical probabilities across populations,
+          not individual certainties. Environment, lifestyle, and epigenetics all shape
+          health outcomes beyond genetics alone.
         </Typography>
-        <Typography variant="body2" paragraph>
-          <strong>Wearable Data:</strong> Activity, sleep, heart rate, and other
-          metrics are pulled from connected devices on a daily schedule. This
-          data is encrypted at rest and used only for cross-domain insights. It
-          is not shared with third parties.
+        <Typography variant="body2" paragraph sx={{ lineHeight: 1.8, color: "text.secondary" }}>
+          Wearable, blood, epigenetic, and microbiome data are encrypted at rest and used
+          solely for cross-domain insights. They are not shared with third parties.
         </Typography>
-        <Typography variant="body2" paragraph>
-          <strong>Epigenetic Analysis:</strong> Histone modification and DNA
-          methylation analyses are experimental and based on publicly available
-          reference datasets (ENCODE, Roadmap Epigenomics). Results may not
-          reflect your current epigenetic state.
-        </Typography>
-        <Typography variant="body2" paragraph>
-          <strong>Microbiome Analysis:</strong> Gut microbiome composition is
-          based on a single sample and varies significantly with diet,
-          medication, sample timing, and collection method. Diversity metrics
-          and taxonomy classifications are estimates, not definitive
-          diagnostics. Cross-domain correlations with genome and blood data
-          are based on population-level research.
-        </Typography>
-        <Typography variant="body2" paragraph sx={{ fontWeight: 600 }}>
-          Always consult a qualified healthcare provider before making any
-          health decisions based on genetic, blood, epigenetic, or wearable
-          data.
+        <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: "italic", color: "text.primary" }}>
+          Always consult a qualified healthcare provider before making health decisions.
         </Typography>
         <FormControlLabel
+          sx={{ mt: 2 }}
           control={
             <Checkbox
               checked={checked}
               onChange={(e) => setChecked(e.target.checked)}
-              color="primary"
+              sx={{ color: "rgba(92,75,63,0.3)", "&.Mui-checked": { color: "#8B9A7F" } }}
             />
           }
-          label="I understand that this tool is not a substitute for professional medical advice"
+          label={
+            <Typography variant="body2" color="text.secondary">
+              I understand this is not a substitute for professional medical advice
+            </Typography>
+          }
         />
       </DialogContent>
-      <DialogActions>
-        <Button
-          onClick={handleAccept}
-          disabled={!checked}
-          variant="contained"
-          size="large"
-        >
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={handleAccept} disabled={!checked} variant="contained" size="large" sx={{ px: 4 }}>
           I Understand — Continue
         </Button>
       </DialogActions>
