@@ -2,6 +2,7 @@
 GenomeInsight — Interactive Preview
 ====================================
 Streamlit app showcasing the cross-domain health-tech platform.
+Wabi Sabi aesthetic: earth tones, organic textures, serene typography.
 Run:  streamlit run streamlit_app.py
 """
 
@@ -32,62 +33,228 @@ from app.utils.correlator import (
 # Page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="GenomeInsight — Preview",
-    page_icon="🧬",
+    page_title="GenomeInsight",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Custom CSS
+# Wabi Sabi CSS
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
-    .main-header {font-size: 2.4rem; font-weight: 700; margin-bottom: 0.2rem;}
-    .sub-header  {font-size: 1.1rem; color: #6b7280; margin-bottom: 1.5rem;}
+    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&family=Noto+Serif+JP:wght@300;400;500&display=swap');
+
+    /* ── Global ── */
+    .stApp {
+        background: #F5F5F0;
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* ── Linen texture overlay ── */
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(139, 154, 127, 0.03) 2px,
+            rgba(139, 154, 127, 0.03) 4px
+        );
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* ── Headers ── */
+    .main-header {
+        font-family: 'Crimson Text', serif;
+        font-size: 2.6rem;
+        font-weight: 600;
+        color: #5C4B3F;
+        margin-bottom: 0.2rem;
+        letter-spacing: -0.02em;
+    }
+    .sub-header {
+        font-family: 'Crimson Text', serif;
+        font-style: italic;
+        font-size: 1.15rem;
+        color: #A8A8A8;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+    }
+
+    /* ── Wabi Card ── */
+    .wabi-card {
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(139, 154, 127, 0.2);
+        border-radius: 12px 4px 12px 4px;
+        padding: 1.2rem 1.4rem;
+        margin-bottom: 1rem;
+        transition: all 0.4s ease;
+    }
+    .wabi-card:hover {
+        box-shadow: 0 4px 20px rgba(92, 75, 63, 0.08);
+    }
+
+    /* ── Insight cards ── */
     .insight-card {
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        border-left: 4px solid #0284c7;
+        background: rgba(245, 245, 240, 0.8);
+        backdrop-filter: blur(6px);
+        border-left: 3px solid #8B9A7F;
+        border-radius: 2px 8px 8px 2px;
         padding: 1rem 1.2rem;
-        border-radius: 0.5rem;
         margin-bottom: 0.8rem;
+        font-family: 'Inter', sans-serif;
     }
     .insight-card-warning {
-        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-        border-left: 4px solid #d97706;
+        background: rgba(196, 168, 130, 0.12);
+        backdrop-filter: blur(6px);
+        border-left: 3px solid #C4A882;
+        border-radius: 2px 8px 8px 2px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 0.8rem;
     }
     .insight-card-danger {
-        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-        border-left: 4px solid #dc2626;
+        background: rgba(160, 120, 110, 0.1);
+        backdrop-filter: blur(6px);
+        border-left: 3px solid #A0786E;
+        border-radius: 2px 8px 8px 2px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 0.8rem;
     }
+
+    .insight-title {
+        font-family: 'Crimson Text', serif;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #5C4B3F;
+    }
+    .insight-meta {
+        font-size: 0.78rem;
+        color: #A8A8A8;
+        font-family: 'Inter', sans-serif;
+    }
+    .insight-body {
+        font-size: 0.9rem;
+        color: #6B6B6B;
+        line-height: 1.6;
+        margin-top: 0.4rem;
+    }
+
+    /* ── Metric boxes ── */
     .metric-box {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.5rem;
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(139, 154, 127, 0.15);
+        border-radius: 8px 2px 8px 2px;
         padding: 1rem;
         text-align: center;
     }
-    .disclaimer-box {
-        background: #fefce8;
-        border: 1px solid #fde68a;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        font-size: 0.85rem;
-        color: #713f12;
-    }
+
+    /* ── Domain badges ── */
     .domain-badge {
         display: inline-block;
         padding: 0.15rem 0.6rem;
         border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: 0.72rem;
+        font-weight: 500;
+        font-family: 'Inter', sans-serif;
         margin-right: 0.3rem;
+        letter-spacing: 0.02em;
     }
-    .badge-genome      {background: #dbeafe; color: #1e40af;}
-    .badge-blood       {background: #fee2e2; color: #991b1b;}
-    .badge-epigenetics {background: #e0e7ff; color: #3730a3;}
-    .badge-microbiome  {background: #d1fae5; color: #065f46;}
-    .badge-wearable    {background: #fce7f3; color: #9d174d;}
+    .badge-genome      { background: rgba(160, 180, 194, 0.25); color: #5C7A8A; }
+    .badge-blood       { background: rgba(160, 120, 110, 0.2);  color: #8A5C52; }
+    .badge-epigenetics { background: rgba(139, 154, 127, 0.2);  color: #5C6B52; }
+    .badge-microbiome  { background: rgba(196, 168, 130, 0.25); color: #7A6B52; }
+    .badge-wearable    { background: rgba(168, 168, 168, 0.2);  color: #6B6B6B; }
+
+    /* ── Disclaimer ── */
+    .wabi-disclaimer {
+        background: rgba(139, 154, 127, 0.08);
+        border: 1px solid rgba(139, 154, 127, 0.15);
+        border-radius: 4px 12px 4px 12px;
+        padding: 1rem 1.2rem;
+        font-family: 'Crimson Text', serif;
+        font-style: italic;
+        font-size: 0.9rem;
+        color: #7A7A6B;
+        line-height: 1.7;
+    }
+
+    /* ── Ink-wash divider ── */
+    .ink-divider {
+        height: 1px;
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(139, 154, 127, 0.3) 20%,
+            rgba(92, 75, 63, 0.2) 50%,
+            rgba(139, 154, 127, 0.3) 80%,
+            transparent 100%
+        );
+        margin: 1.5rem 0;
+        border: none;
+    }
+
+    /* ── Wavy SVG separator ── */
+    .wabi-wave {
+        width: 100%;
+        height: 24px;
+        margin: 1rem 0;
+    }
+    .wabi-wave svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    /* ── Sidebar ── */
+    [data-testid="stSidebar"] {
+        background: rgba(245, 245, 240, 0.95);
+        border-right: 1px solid rgba(139, 154, 127, 0.15);
+    }
+    [data-testid="stSidebar"] .stMarkdown h2 {
+        font-family: 'Crimson Text', serif;
+        color: #5C4B3F;
+        letter-spacing: -0.01em;
+    }
+
+    /* ── Streamlit overrides ── */
+    .stMetricLabel { font-family: 'Inter', sans-serif !important; }
+    .stMetricValue { font-family: 'Crimson Text', serif !important; color: #5C4B3F !important; }
+
+    h1, h2, h3 {
+        font-family: 'Crimson Text', serif !important;
+        color: #5C4B3F !important;
+    }
+
+    .stDataFrame {
+        border-radius: 8px 2px 8px 2px;
+        overflow: hidden;
+    }
+
+    /* ── Code block ── */
+    .stCodeBlock {
+        border-radius: 4px 12px 4px 12px;
+        border: 1px solid rgba(139, 154, 127, 0.15);
+    }
+
+    /* ── Expander ── */
+    .streamlit-expanderHeader {
+        font-family: 'Crimson Text', serif;
+        color: #5C4B3F;
+    }
+
+    /* ── Footer ── */
+    .wabi-footer {
+        font-family: 'Crimson Text', serif;
+        font-style: italic;
+        font-size: 0.85rem;
+        color: #A8A8A8;
+        text-align: center;
+        padding: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -158,13 +325,14 @@ SAMPLE_EPIGENETIC_OVERLAYS = [
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Sidebar
+#  Sidebar — organic, minimal
 # ═══════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
     st.markdown("## GenomeInsight")
-    st.caption("Privacy-first cross-domain health analysis")
-    st.divider()
+    st.caption("_A quiet lens into your biology_")
+
+    st.markdown('<div class="ink-divider"></div>', unsafe_allow_html=True)
 
     page = st.radio(
         "Navigate",
@@ -178,9 +346,10 @@ with st.sidebar:
             "Architecture",
         ],
         index=0,
+        label_visibility="collapsed",
     )
 
-    st.divider()
+    st.markdown('<div class="ink-divider"></div>', unsafe_allow_html=True)
     st.markdown("**Data Domains**")
     enable_genome = st.toggle("Genome variants", value=True)
     enable_blood = st.toggle("Blood markers", value=True)
@@ -188,14 +357,29 @@ with st.sidebar:
     enable_epigenetics = st.toggle("Epigenetic overlays", value=True)
     enable_wearable = st.toggle("Wearable data", value=True)
 
-    st.divider()
-    st.caption("385 backend tests passing")
-    st.caption("20 integration tests")
+    st.markdown('<div class="ink-divider"></div>', unsafe_allow_html=True)
+    st.caption("_385 tests passing_")
+    st.caption("_20 integration tests_")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Helper functions
 # ═══════════════════════════════════════════════════════════════════════════
+
+def ink_divider():
+    st.markdown('<div class="ink-divider"></div>', unsafe_allow_html=True)
+
+
+def wave_divider():
+    st.markdown(
+        '<div class="wabi-wave">'
+        '<svg viewBox="0 0 1200 24" preserveAspectRatio="none">'
+        '<path d="M0,12 C150,24 350,0 600,12 C850,24 1050,0 1200,12" '
+        'fill="none" stroke="rgba(139,154,127,0.25)" stroke-width="1"/>'
+        '</svg></div>',
+        unsafe_allow_html=True,
+    )
+
 
 def domain_badges(sources: list[str]) -> str:
     badge_map = {
@@ -225,20 +409,19 @@ def render_insight_card(insight: CorrelationInsight):
     st.markdown(
         f"""<div class="{css_class}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong>{insight.title}</strong>
-            <span style="font-size:0.8rem; color:#6b7280;">
-                Priority {insight.priority} | {insight.confidence} confidence
+            <span class="insight-title">{insight.title}</span>
+            <span class="insight-meta">
+                Priority {insight.priority} · {insight.confidence}
             </span>
         </div>
         <div style="margin: 0.4rem 0;">{badges}</div>
-        <p style="margin: 0.5rem 0; font-size: 0.92rem;">{insight.body}</p>
+        <p class="insight-body">{insight.body}</p>
         </div>""",
         unsafe_allow_html=True,
     )
 
 
 def get_active_data():
-    """Return data based on sidebar toggles."""
     v = SAMPLE_VARIANTS if enable_genome else []
     b = SAMPLE_BLOOD_MARKERS if enable_blood else []
     w = SAMPLE_WEARABLE if enable_wearable else []
@@ -254,33 +437,34 @@ def get_active_data():
 if page == "Overview":
     st.markdown('<div class="main-header">GenomeInsight</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Privacy-first health-tech platform analyzing '
-        "genome, blood, epigenetic, microbiome, and wearable data for "
-        "personalized cross-domain health insights.</div>",
+        '<div class="sub-header">'
+        "Where your biology whispers its story — genome, blood, epigenetics, "
+        "microbiome, and wearable rhythms woven into quiet understanding."
+        "</div>",
         unsafe_allow_html=True,
     )
 
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Data Domains", "5", help="Genome, Blood, Epigenetics, Microbiome, Wearables")
+        st.metric("Domains", "5", help="Genome, Blood, Epigenetics, Microbiome, Wearables")
     with col2:
-        st.metric("Correlation Rules", "9", help="Multi-domain interaction rules")
+        st.metric("Correlations", "9", help="Multi-domain interaction rules")
     with col3:
-        st.metric("Backend Tests", "385", delta="20 new integration")
+        st.metric("Tests", "385", delta="20 new")
     with col4:
-        st.metric("API Endpoints", "35+", help="RESTful API with JWT auth")
+        st.metric("Endpoints", "35+", help="RESTful API with JWT auth")
     with col5:
-        st.metric("Scheduled Tasks", "4", help="Celery Beat periodic tasks")
+        st.metric("Tasks", "4", help="Celery Beat periodic tasks")
 
-    st.divider()
+    wave_divider()
 
-    st.subheader("What was built")
+    st.subheader("What Lives Here")
     left, right = st.columns(2)
     with left:
         st.markdown("""
         **Core Platform**
         - Flask REST API with SQLAlchemy models
-        - React 18 SPA with Material-UI
+        - React 18 SPA — Wabi Sabi aesthetic
         - AES-256-GCM envelope encryption
         - JWT auth with refresh tokens
         - Celery async task pipeline
@@ -297,7 +481,7 @@ if page == "Overview":
         """)
     with right:
         st.markdown("""
-        **Microbiome Analysis** *(latest)*
+        **Microbiome Analysis**
         - BIOM / OTU CSV / FASTQ file support
         - Shannon, Simpson, Chao1 diversity
         - Enterotype classification
@@ -314,18 +498,17 @@ if page == "Overview":
         - Activity, sleep, HRV, SpO2, stress
         """)
 
-    st.divider()
+    wave_divider()
 
-    st.subheader("Session work — microbiome finalization")
+    st.subheader("Recent Work")
     st.markdown("""
     | Change | Details |
     |--------|---------|
-    | **2 new correlator rules** | `gut_axis_methylation` (SLC6A4 + diversity + Vitamin D) and `mthfr_gut_methylation` (MTHFR + Bifidobacterium + epigenetic) |
-    | **Stale-check task** | `check_and_reanalyze_stale` — daily Celery Beat task re-triggers microbiome analysis when new genome/blood/wearable data arrives |
+    | **2 new correlator rules** | `gut_axis_methylation` and `mthfr_gut_methylation` |
+    | **Stale-check task** | Daily Celery Beat re-triggers when new data arrives |
     | **Disclaimers** | Microbiome-specific warnings in `UnifiedAnalysisResult` |
-    | **20 integration tests** | Correlator rules, stale-check logic, display text, disclaimers, API routes |
-    | **Docker updates** | scipy build deps, `MAX_MICROBIOME_FILE_SIZE_MB` env var |
-    | **README.md** | Full microbiome docs, API endpoints, env vars, scheduled tasks |
+    | **20 integration tests** | Correlator rules, stale-check, API routes |
+    | **Wabi Sabi redesign** | Earth tones, organic textures, serene typography |
     """)
 
 
@@ -334,8 +517,13 @@ if page == "Overview":
 # ═══════════════════════════════════════════════════════════════════════════
 
 elif page == "Genome & Blood":
-    st.markdown('<div class="main-header">Genome & Blood Data</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Genomic variants and blood biomarkers from the sample patient.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Genome & Blood</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sub-header">'
+        "The quiet code written in your DNA, reflected in your bloodstream."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     left, right = st.columns(2)
 
@@ -345,27 +533,21 @@ elif page == "Genome & Blood":
             df_v = pd.DataFrame(SAMPLE_VARIANTS)
             df_v.columns = ["rsID", "Gene", "Genotype", "Risk Level"]
             st.dataframe(df_v, use_container_width=True, hide_index=True)
-
-            st.info(
+            st.markdown(
+                '<div class="wabi-disclaimer">'
                 "These variants interact with microbiome, epigenetic, and blood "
                 "data through our cross-domain correlation engine."
+                "</div>",
+                unsafe_allow_html=True,
             )
         else:
-            st.warning("Genome data is disabled in sidebar.")
+            st.info("Genome data is resting. Enable it in the sidebar.")
 
     with right:
         st.subheader("Blood Markers")
         if enable_blood:
             df_b = pd.DataFrame(SAMPLE_BLOOD_MARKERS)
             df_b.columns = ["Marker", "Value", "Unit", "Flag"]
-
-            def flag_color(flag):
-                if flag == "H":
-                    return "background-color: #fee2e2"
-                elif flag == "L":
-                    return "background-color: #fef3c7"
-                return ""
-
             st.dataframe(df_b, use_container_width=True, hide_index=True)
 
             col1, col2, col3 = st.columns(3)
@@ -376,7 +558,7 @@ elif page == "Genome & Blood":
             with col3:
                 st.metric("hs-CRP", "4.5 mg/L", delta="High", delta_color="inverse")
         else:
-            st.warning("Blood data is disabled in sidebar.")
+            st.info("Blood data is resting. Enable it in the sidebar.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -384,15 +566,19 @@ elif page == "Genome & Blood":
 # ═══════════════════════════════════════════════════════════════════════════
 
 elif page == "Microbiome":
-    st.markdown('<div class="main-header">Microbiome Analysis</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Gut microbiome composition, diversity, and enterotype classification.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Microbiome</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sub-header">'
+        "The garden within — trillions of companions shaping your health."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     if not enable_microbiome:
-        st.warning("Microbiome data is disabled in sidebar.")
+        st.info("Microbiome data is resting. Enable it in the sidebar.")
     else:
         m = SAMPLE_MICROBIOME
 
-        # Diversity metrics
         st.subheader("Alpha Diversity")
         c1, c2, c3, c4 = st.columns(4)
         div = m["diversity"]
@@ -405,37 +591,33 @@ elif page == "Microbiome":
         with c4:
             st.metric("Enterotype", m["enterotype"])
 
-        st.divider()
+        ink_divider()
 
-        # Phylum composition
         left, right = st.columns(2)
         with left:
             st.subheader("Phylum Composition")
             phylum_data = pd.DataFrame(m["composition"]["phylum"])
             phylum_data.columns = ["Phylum", "Relative Abundance"]
-
             chart_data = phylum_data.set_index("Phylum")
-            st.bar_chart(chart_data, color="#0284c7")
+            st.bar_chart(chart_data, color="#8B9A7F")
 
-            # F/B ratio
             firmicutes = next((p["abundance"] for p in m["composition"]["phylum"] if p["name"] == "Firmicutes"), 0)
             bacteroidetes = next((p["abundance"] for p in m["composition"]["phylum"] if p["name"] == "Bacteroidetes"), 0)
             fb_ratio = firmicutes / bacteroidetes if bacteroidetes > 0 else 0
-            st.metric("Firmicutes / Bacteroidetes Ratio", f"{fb_ratio:.2f}",
-                      delta="Elevated (>3)" if fb_ratio > 3 else "Normal", delta_color="inverse" if fb_ratio > 3 else "normal")
+            st.metric("F/B Ratio", f"{fb_ratio:.2f}",
+                      delta="Elevated (>3)" if fb_ratio > 3 else "Normal",
+                      delta_color="inverse" if fb_ratio > 3 else "normal")
 
         with right:
             st.subheader("Genus Abundance")
             genus_data = pd.DataFrame(m["composition"]["genus"])
             genus_data.columns = ["Genus", "Relative Abundance"]
-
             chart_data_g = genus_data.set_index("Genus")
-            st.bar_chart(chart_data_g, horizontal=True, color="#059669")
+            st.bar_chart(chart_data_g, horizontal=True, color="#C4A882")
 
-        st.divider()
+        ink_divider()
 
-        # Key genus table
-        st.subheader("Key Genera Detail")
+        st.subheader("Key Genera")
         genus_df = pd.DataFrame(m["composition"]["genus"])
         genus_df.columns = ["Genus", "Abundance"]
         genus_df["Abundance %"] = (genus_df["Abundance"] * 100).round(2)
@@ -449,10 +631,10 @@ elif page == "Microbiome":
         st.dataframe(genus_df[["Genus", "Abundance %", "Status"]], use_container_width=True, hide_index=True)
 
         st.markdown(
-            '<div class="disclaimer-box">'
-            "Microbiome analysis is an emerging science. Results vary significantly "
-            "by sampling method, timing, diet, and medication. A single sample "
-            "provides a snapshot, not a definitive assessment."
+            '<div class="wabi-disclaimer">'
+            "Microbiome analysis is an emerging science. Results vary by sampling method, "
+            "timing, diet, and medication. A single sample provides a snapshot, not a "
+            "definitive assessment — like observing a garden on one morning."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -464,6 +646,12 @@ elif page == "Microbiome":
 
 elif page == "Epigenetics & Wearables":
     st.markdown('<div class="main-header">Epigenetics & Wearables</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sub-header">'
+        "The marks above your genes and the rhythms of your daily life."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     left, right = st.columns(2)
 
@@ -473,12 +661,18 @@ elif page == "Epigenetics & Wearables":
             df_e = pd.DataFrame(SAMPLE_EPIGENETIC_OVERLAYS)
             df_e.columns = ["Gene", "Region", "Modification"]
             st.dataframe(df_e, use_container_width=True, hide_index=True)
-            st.info("These overlays are cross-referenced with genome variants and microbiome data.")
+            st.markdown(
+                '<div class="wabi-disclaimer">'
+                "These overlays are cross-referenced with genome variants and microbiome data — "
+                "layers upon layers of biological memory."
+                "</div>",
+                unsafe_allow_html=True,
+            )
         else:
-            st.warning("Epigenetic data is disabled in sidebar.")
+            st.info("Epigenetic data is resting. Enable it in the sidebar.")
 
     with right:
-        st.subheader("Wearable Summaries")
+        st.subheader("Wearable Rhythms")
         if enable_wearable:
             for w in SAMPLE_WEARABLE:
                 with st.expander(f"{w['data_type'].title()} — {w['date']}"):
@@ -486,7 +680,7 @@ elif page == "Epigenetics & Wearables":
                         label = key.replace("_", " ").title()
                         st.metric(label, str(val))
         else:
-            st.warning("Wearable data is disabled in sidebar.")
+            st.info("Wearable data is resting. Enable it in the sidebar.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -494,24 +688,23 @@ elif page == "Epigenetics & Wearables":
 # ═══════════════════════════════════════════════════════════════════════════
 
 elif page == "Cross-Domain Engine":
-    st.markdown('<div class="main-header">Cross-Domain Correlation Engine</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Cross-Domain Correlations</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sub-header">'
-        "Real-time execution of the 9-rule multi-domain engine with the sample patient. "
-        "Toggle data domains in the sidebar to see how insights change.</div>",
+        "Where separate streams of data converge — patterns emerge from the quiet interplay "
+        "of genome, blood, gut, epigenetics, and daily rhythm."
+        "</div>",
         unsafe_allow_html=True,
     )
 
     variants, blood, wearable, microbiome, epigenetics = get_active_data()
 
-    # Count active domains
     active_count = sum([
         bool(variants), bool(blood), bool(wearable),
         microbiome is not None, epigenetics is not None,
     ])
-    st.info(f"Running engine with **{active_count}/5** data domains active.")
+    st.caption(f"_Running engine with {active_count}/5 data domains active._")
 
-    # Run the actual correlator
     correlations = run_unified_correlation(
         user_variants=variants,
         blood_markers=blood,
@@ -520,10 +713,9 @@ elif page == "Cross-Domain Engine":
         epigenetic_overlays=epigenetics,
     )
 
-    # Summary metrics
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Insights Generated", len(correlations))
+        st.metric("Insights", len(correlations))
     with c2:
         high_priority = len([c for c in correlations if c.priority >= 80])
         st.metric("High Priority", high_priority)
@@ -536,22 +728,19 @@ elif page == "Cross-Domain Engine":
             all_sources.update(c.data_sources)
         st.metric("Domains Used", len(all_sources))
 
-    st.divider()
+    wave_divider()
 
-    # Render insights sorted by priority
     correlations_sorted = sorted(correlations, key=lambda c: c.priority, reverse=True)
 
     for insight in correlations_sorted:
         render_insight_card(insight)
-
-        # Expandable recommendations
         if insight.recommendations:
             with st.expander("Recommendations"):
                 for rec in insight.recommendations:
                     st.markdown(f"- {rec}")
 
     if not correlations:
-        st.info("No correlations generated. Try enabling more data domains in the sidebar.")
+        st.caption("_No correlations to show. Enable more data domains in the sidebar._")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -561,7 +750,10 @@ elif page == "Cross-Domain Engine":
 elif page == "Unified Report":
     st.markdown('<div class="main-header">Unified Health Report</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Full unified analysis with AI narrative, domain summaries, and disclaimer.</div>',
+        '<div class="sub-header">'
+        "Weaving your health tapestry — domain summaries, cross-domain insights, "
+        "and a quiet narrative of your biological landscape."
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -579,49 +771,41 @@ elif page == "Unified Report":
     # Domain status
     st.subheader("Domain Status")
     cols = st.columns(5)
-    domain_icons = {
-        "genome": "DNA", "blood": "Blood", "epigenetics": "Epigenetics",
+    domain_labels = {
+        "genome": "Genome", "blood": "Blood", "epigenetics": "Epigenetics",
         "microbiome": "Microbiome", "wearable": "Wearables"
     }
     for i, domain in enumerate(result.domains):
         with cols[i]:
-            status_emoji = "Available" if domain.status == "available" else "Unavailable"
-            color = "green" if domain.status == "available" else "gray"
-            st.markdown(
-                f"**{domain_icons.get(domain.domain, domain.domain)}**"
-            )
+            st.markdown(f"**{domain_labels.get(domain.domain, domain.domain)}**")
             if domain.status == "available":
-                st.success(f"{status_emoji}")
+                st.success("Available")
             else:
-                st.error(f"{status_emoji}")
+                st.error("Unavailable")
             if domain.metrics:
                 for k, v in list(domain.metrics.items())[:3]:
                     st.caption(f"{k}: {v}")
 
-    st.divider()
+    ink_divider()
 
-    # AI Narrative
-    st.subheader("AI Narrative")
-    st.markdown(result.ai_narrative)
+    st.subheader("Narrative")
+    st.markdown(f"_{result.ai_narrative}_")
 
-    st.divider()
+    ink_divider()
 
-    # Correlations summary
     st.subheader(f"Cross-Domain Insights ({len(result.correlations)})")
     for insight in sorted(result.correlations, key=lambda c: c.priority, reverse=True):
         render_insight_card(insight)
 
-    st.divider()
+    ink_divider()
 
-    # Disclaimer
-    st.subheader("Disclaimer")
+    st.subheader("A Mindful Note")
     st.markdown(
-        f'<div class="disclaimer-box">{result.disclaimer}</div>',
+        f'<div class="wabi-disclaimer">{result.disclaimer}</div>',
         unsafe_allow_html=True,
     )
 
-    # Raw JSON
-    with st.expander("View raw JSON response"):
+    with st.expander("Raw JSON"):
         st.json(result.to_dict())
 
 
@@ -631,6 +815,12 @@ elif page == "Unified Report":
 
 elif page == "Architecture":
     st.markdown('<div class="main-header">Architecture</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sub-header">'
+        "The structure beneath — how the pieces fit together."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     st.code("""
 GenomeInsight/
@@ -638,49 +828,47 @@ GenomeInsight/
 │   ├── app/
 │   │   ├── api/              # Blueprints (auth, genome, blood, epigenetics,
 │   │   │                     #   wearables, microbiome, analysis)
-│   │   ├── models/           # SQLAlchemy models (user, genome, blood,
-│   │   │                     #   epigenetics, wearable, microbiome)
+│   │   ├── models/           # SQLAlchemy models
 │   │   ├── services/         # Genome analyzer, report generator, encryption
-│   │   ├── tasks/            # Celery async tasks (genome, blood, epigenetics,
-│   │   │                     #   wearable, microbiome)
-│   │   └── utils/            # VCF parser, blood parser, epigenetics/microbiome
-│   │                         #   analyzers, cross-domain correlator
-│   ├── tests/                # Pytest test suite (385 tests)
-│   ├── celery_worker.py      # Celery worker + Beat scheduler
+│   │   ├── tasks/            # Celery async tasks
+│   │   └── utils/            # VCF parser, blood parser, correlator
+│   ├── tests/                # 385 tests
+│   ├── celery_worker.py
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/                 # React 18 SPA
+├── frontend/                 # React 18 — Wabi Sabi aesthetic
 │   ├── src/
 │   │   ├── components/       # Dashboard, Upload, Report, Wearables,
 │   │   │                     #   Microbiome, UnifiedReport
-│   │   ├── contexts/         # AuthContext (JWT management)
-│   │   └── services/         # Axios API client with auto-refresh
+│   │   ├── theme/            # wabiSabi.js — MUI earth-tone theme
+│   │   ├── contexts/         # AuthContext (JWT)
+│   │   └── services/         # Axios API client
+│   ├── tailwind.config.js    # Custom Wabi Sabi palette
 │   ├── Dockerfile
 │   └── nginx.conf
-├── docker-compose.yml        # 5 services: backend, frontend, redis,
-│                             #   celery, celery-beat
-├── streamlit_app.py          # This demo app
+├── docker-compose.yml        # 5 services
+├── streamlit_app.py          # This preview
 └── .env.example
     """, language="text")
 
-    st.divider()
+    wave_divider()
 
-    st.subheader("Celery Beat — Scheduled Tasks")
+    st.subheader("Scheduled Tasks")
     tasks_data = [
         {"Task": "sync_all_active_connections", "Schedule": "Every 6 hours",
          "Queue": "wearables", "Description": "Pull wearable data from Terra API"},
         {"Task": "generate_daily_insights", "Schedule": "Daily 02:30 UTC",
          "Queue": "insights", "Description": "Cross-domain insight generation"},
         {"Task": "schedule_weekly_reanalysis", "Schedule": "Monday 03:00 UTC",
-         "Queue": "analysis", "Description": "Re-run microbiome cross-domain correlations"},
+         "Queue": "analysis", "Description": "Re-run microbiome correlations"},
         {"Task": "check_and_reanalyze_stale", "Schedule": "Daily 04:00 UTC",
-         "Queue": "analysis", "Description": "Re-analyze when new genome/blood/wearable data arrives"},
+         "Queue": "analysis", "Description": "Re-analyze when new data arrives"},
     ]
     st.dataframe(pd.DataFrame(tasks_data), use_container_width=True, hide_index=True)
 
-    st.divider()
+    wave_divider()
 
-    st.subheader("Multi-Domain Correlation Rules")
+    st.subheader("Correlation Rules")
     rules_data = [
         {"ID": "lactose_triad", "Domains": "genome + microbiome + blood",
          "Trigger": "LCT/MCM6 CC + low Lactobacillus + low Calcium"},
@@ -703,7 +891,7 @@ GenomeInsight/
     ]
     st.dataframe(pd.DataFrame(rules_data), use_container_width=True, hide_index=True)
 
-    st.divider()
+    wave_divider()
 
     st.subheader("API Endpoints (35+)")
     api_sections = {
@@ -719,7 +907,7 @@ GenomeInsight/
     for section, endpoints in api_sections.items():
         st.markdown(f"**{section}**: {endpoints}")
 
-    st.divider()
+    wave_divider()
 
     st.subheader("Security")
     st.markdown("""
@@ -736,8 +924,13 @@ GenomeInsight/
 #  Footer
 # ═══════════════════════════════════════════════════════════════════════════
 
-st.divider()
-st.caption(
+wave_divider()
+st.markdown(
+    '<div class="wabi-footer">'
     "GenomeInsight is for informational and educational purposes only. "
-    "It is NOT medical advice. Always consult a qualified healthcare provider."
+    "Not medical advice — consult a qualified healthcare provider."
+    "<br><br>"
+    "Like all things, this too shall change."
+    "</div>",
+    unsafe_allow_html=True,
 )
