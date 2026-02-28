@@ -243,7 +243,9 @@ def _build_profile_block(data: dict) -> str:
         f"  QSBS Stock:     {'Yes' if data.get('has_qsbs') else 'No'}",
         "",
         "GOALS (priority order):",
-        *[f"  {i+1}. {g}" for i, g in enumerate(goals)] if goals else ["  Not specified"],
+    ]
+    lines += [f"  {i+1}. {g}" for i, g in enumerate(goals)] if goals else ["  Not specified"]
+    lines += [
         "",
         "PLANNING PARAMETERS",
         f"  Risk Tolerance:    {data.get('risk_tolerance', 'moderate')}",
@@ -305,26 +307,32 @@ def get_cpa_email_body(plan_name: str, result: dict, wizard_data: dict) -> str:
     lines = [
         f"Subject: Tax Planning Analysis — {plan_name} — ${savings:,.0f}/yr Opportunity",
         "",
-        f"Hi [CPA Name],",
+        "Hi [CPA Name],",
         "",
         f"I've completed a preliminary AI-assisted tax analysis for {wizard_data.get('business_name', 'my business')} "
         f"and identified approximately ${savings:,.0f} in potential annual tax savings. "
-        f"I'd like to discuss these opportunities with you and get your professional assessment.",
+        "I'd like to discuss these opportunities with you and get your professional assessment.",
         "",
         "HEADLINE OPPORTUNITY:",
         result.get("headline_insight", ""),
         "",
         "TOP STRATEGIES IDENTIFIED:",
-        *[f"• {s['name']} — ~${s.get('estimated_annual_savings', 0):,.0f}/yr "
-          f"(IRC §{', §'.join(s.get('irc_sections', [])[:2])})"
-          for s in top_strats],
+    ]
+    lines += [
+        f"• {s['name']} — ~${s.get('estimated_annual_savings', 0):,.0f}/yr "
+        f"(IRC §{', §'.join(s.get('irc_sections', [])[:2])})"
+        for s in top_strats
+    ]
+    lines += [
         "",
         "ENTITY RECOMMENDATION:",
         f"Current: {wizard_data.get('entity_type', 'Unknown')} → Recommended: {result.get('entity_recommendation', 'See analysis')}",
         result.get("entity_rationale", ""),
         "",
         "URGENT ITEMS (year-end deadlines):",
-        *[f"• {a}" for a in urgent[:3]] if urgent else ["• No immediate deadlines identified"],
+    ]
+    lines += [f"• {a}" for a in urgent[:3]] if urgent else ["• No immediate deadlines identified"]
+    lines += [
         "",
         "FULL ANALYSIS ATTACHED (ZeroTax AI — for reference only, not legal/tax advice)",
         "",
