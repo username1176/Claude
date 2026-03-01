@@ -30,6 +30,9 @@ def render_graph(proj: Project) -> None:
     nodes: list[dict[str, Any]] = []
     links: list[dict[str, Any]] = []
 
+    # Fixed canvas height — must match the components.html height param
+    GRAPH_HEIGHT = 800
+
     # ── Project hub node ────────────────────────────────────────────
     nodes.append({
         "id": f"proj_{proj.id}",
@@ -95,22 +98,23 @@ def render_graph(proj: Project) -> None:
 
     graph_json = json.dumps({"nodes": nodes, "links": links})
 
-    html = _build_html(graph_json)
-    components.html(html, height=680, scrolling=False)
+    html = _build_html(graph_json, GRAPH_HEIGHT)
+    components.html(html, height=GRAPH_HEIGHT, scrolling=False)
 
 
 # ── HTML / D3 template ──────────────────────────────────────────────
 
 
-def _build_html(graph_json: str) -> str:
+def _build_html(graph_json: str, canvas_height: int) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  html, body {{ width: 100%; height: 100%; background: #1e1e2e; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; }}
-  svg  {{ display: block; width: 100%; height: 100%; }}
+  html {{ width: 100%; height: {canvas_height}px; }}
+  body {{ width: 100%; height: {canvas_height}px; background: #1e1e2e; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; }}
+  #graph {{ display: block; width: 100%; height: {canvas_height}px; }}
 
   /* Tooltip */
   #tooltip {{
@@ -169,24 +173,37 @@ def _build_html(graph_json: str) -> str:
 <script>
 const data = {graph_json};
 
-const width  = window.innerWidth  || document.documentElement.clientWidth;
-const height = window.innerHeight || document.documentElement.clientHeight;
+// Hard-coded dimensions — these MUST match the iframe / CSS above.
+// We never rely on window.innerHeight because Streamlit iframes
+// report incorrect values before they finish laying out.
+const HEIGHT = {canvas_height};
+const WIDTH  = Math.max(document.documentElement.clientWidth || 900, 600);
 
 const svg = d3.select("#graph")
-    .attr("width", width)
-    .attr("height", height);
+    .attr("width",  WIDTH)
+    .attr("height", HEIGHT);
+
+// ── Pre-seed node positions in a circle so the simulation starts spread out ──
+const cx = WIDTH / 2, cy = HEIGHT / 2;
+const initRadius = Math.min(WIDTH, HEIGHT) * 0.35;
+data.nodes.forEach((d, i) => {{
+  const angle = (2 * Math.PI * i) / data.nodes.length;
+  d.x = cx + initRadius * Math.cos(angle);
+  d.y = cy + initRadius * Math.sin(angle);
+}});
+// Pin the project node to center initially
+data.nodes[0].x = cx;
+data.nodes[0].y = cy;
 
 // ── Defs: glow filters + arrow markers ───────────────────────────
 const defs = svg.append("defs");
 
-// Glow filter
 const glow = defs.append("filter").attr("id", "glow");
 glow.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "blur");
-const merge = glow.append("feMerge");
-merge.append("feMergeNode").attr("in", "blur");
-merge.append("feMergeNode").attr("in", "SourceGraphic");
+const feMerge = glow.append("feMerge");
+feMerge.append("feMergeNode").attr("in", "blur");
+feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
-// Arrow marker for sequence edges
 defs.append("marker")
     .attr("id", "arrow")
     .attr("viewBox", "0 -4 8 8")
@@ -202,25 +219,21 @@ defs.append("marker")
 const g = svg.append("g");
 
 const zoom = d3.zoom()
-    .scaleExtent([0.2, 5])
+    .scaleExtent([0.15, 5])
     .on("zoom", (e) => g.attr("transform", e.transform));
 svg.call(zoom);
 
-// ── Colour helpers ───────────────────────────────────────────────
+// ── Colour / size helpers ────────────────────────────────────────
 function nodeColour(d) {{
   if (d.type === "project") return "#cba6f7";
   if (d.type === "tab")     return d.status === "done" ? "#a6e3a1" : "#89b4fa";
-  /* subtask */              return d.status === "done" ? "#94e2d5" : "#6c7086";
+  return d.status === "done" ? "#94e2d5" : "#6c7086";
 }}
 
 function nodeRadius(d) {{
   if (d.type === "project") return 28;
   if (d.type === "tab")     return 16;
   return 9;
-}}
-
-function linkColour(d) {{
-  return d.type === "sequence" ? "#f5c2e7" : "#45475a";
 }}
 
 // ── Force simulation ─────────────────────────────────────────────
@@ -232,19 +245,19 @@ const simulation = d3.forceSimulation(data.nodes)
       d.type === "sequence" ? 200 * spread : d.source.type === "project" ? 240 * spread : 120 * spread
     ))
     .force("charge", d3.forceManyBody().strength(d =>
-      d.type === "project" ? -1200 : d.type === "tab" ? -600 : -250
+      d.type === "project" ? -1400 : d.type === "tab" ? -700 : -300
     ))
-    .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("x", d3.forceX(width / 2).strength(0.03))
-    .force("y", d3.forceY(height / 2).strength(0.03))
-    .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 18));
+    .force("center", d3.forceCenter(cx, cy))
+    .force("x", d3.forceX(cx).strength(0.02))
+    .force("y", d3.forceY(cy).strength(0.02))
+    .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 20));
 
 // ── Draw links ───────────────────────────────────────────────────
 const link = g.append("g")
   .selectAll("line")
   .data(data.links)
   .join("line")
-    .attr("stroke", linkColour)
+    .attr("stroke", d => d.type === "sequence" ? "#f5c2e7" : "#45475a")
     .attr("stroke-width", d => d.type === "sequence" ? 2 : 1)
     .attr("stroke-opacity", d => d.type === "sequence" ? 0.6 : 0.25)
     .attr("stroke-dasharray", d => d.type === "sequence" ? "6,3" : "none")
@@ -260,7 +273,6 @@ const node = g.append("g")
       .on("drag",  dragged)
       .on("end",   dragEnd));
 
-// Outer ring (glow for completed)
 node.append("circle")
     .attr("r", d => nodeRadius(d) + 3)
     .attr("fill", "none")
@@ -269,7 +281,6 @@ node.append("circle")
     .attr("opacity", 0.4)
     .attr("filter", d => d.status === "done" ? "url(#glow)" : null);
 
-// Main circle
 node.append("circle")
     .attr("r", nodeRadius)
     .attr("fill", nodeColour)
@@ -279,9 +290,8 @@ node.append("circle")
     .attr("filter", d => d.type === "project" ? "url(#glow)" : null)
     .style("cursor", "grab");
 
-// Labels
 node.append("text")
-    .text(d => d.label.length > 20 ? d.label.slice(0, 18) + "\u2026" : d.label)
+    .text(d => d.label.length > 20 ? d.label.slice(0, 18) + "\\u2026" : d.label)
     .attr("dy", d => nodeRadius(d) + 14)
     .attr("text-anchor", "middle")
     .attr("fill", d => d.type === "project" ? "#cba6f7" : "#a6adc8")
@@ -293,12 +303,12 @@ node.append("text")
 const tooltip = d3.select("#tooltip");
 
 node.on("mouseenter", (event, d) => {{
-  let html = '<div class="tt-title">' + esc(d.label) + '</div>';
-  html += '<div class="tt-type">' + d.type + (d.status === "done" ? " \u2714 done" : " \u23f3 pending") + '</div>';
-  if (d.llm)   html += '<div class="tt-meta">LLM: ' + esc(d.llm) + '</div>';
-  if (d.tools) html += '<div class="tt-meta">Tools: ' + esc(d.tools) + '</div>';
-  if (d.detail) html += '<div class="tt-detail">' + esc(d.detail) + '</div>';
-  tooltip.html(html).style("display", "block");
+  let h = '<div class="tt-title">' + esc(d.label) + '</div>';
+  h += '<div class="tt-type">' + d.type + (d.status === "done" ? " \\u2714 done" : " \\u23f3 pending") + '</div>';
+  if (d.llm)   h += '<div class="tt-meta">LLM: ' + esc(d.llm) + '</div>';
+  if (d.tools) h += '<div class="tt-meta">Tools: ' + esc(d.tools) + '</div>';
+  if (d.detail) h += '<div class="tt-detail">' + esc(d.detail) + '</div>';
+  tooltip.html(h).style("display", "block");
 }})
 .on("mousemove", (event) => {{
   tooltip
@@ -332,32 +342,33 @@ function dragEnd(event, d) {{
   d.fx = null; d.fy = null;
 }}
 
-// ── Zoom to fit after simulation settles ─────────────────────────
+// ── Zoom-to-fit ──────────────────────────────────────────────────
 function zoomToFit(duration) {{
-  const pad = 60;
+  const pad = 80;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   data.nodes.forEach(d => {{
-    const r = nodeRadius(d) + 20;
+    const r = nodeRadius(d) + 24;
     if (d.x - r < x0) x0 = d.x - r;
     if (d.y - r < y0) y0 = d.y - r;
     if (d.x + r > x1) x1 = d.x + r;
     if (d.y + r > y1) y1 = d.y + r;
   }});
-  const bw = x1 - x0 || 1;
-  const bh = y1 - y0 || 1;
-  const scale = Math.min((width - pad * 2) / bw, (height - pad * 2) / bh, 2.5);
-  const tx = (width  - bw * scale) / 2 - x0 * scale;
-  const ty = (height - bh * scale) / 2 - y0 * scale;
+  const bw = (x1 - x0) || 1;
+  const bh = (y1 - y0) || 1;
+  const scale = Math.min((WIDTH - pad * 2) / bw, (HEIGHT - pad * 2) / bh, 2.5);
+  const tx = (WIDTH  - bw * scale) / 2 - x0 * scale;
+  const ty = (HEIGHT - bh * scale) / 2 - y0 * scale;
   svg.transition().duration(duration).call(
     zoom.transform,
     d3.zoomIdentity.translate(tx, ty).scale(scale)
   );
 }}
 
-// Fit once the simulation has mostly stabilised
-simulation.on("end", () => zoomToFit(600));
-// Also fit after a short delay in case the sim is still warm
-setTimeout(() => zoomToFit(800), 1500);
+// Fire zoom-to-fit at multiple checkpoints to guarantee it catches
+// the simulation in a settled state.
+simulation.on("end", () => zoomToFit(500));
+setTimeout(() => zoomToFit(700), 800);
+setTimeout(() => zoomToFit(500), 2500);
 </script>
 </body>
 </html>"""
