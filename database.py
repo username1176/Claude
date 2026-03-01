@@ -6,6 +6,8 @@ Schema:
   tax_plans  — full JSON plan blobs
 """
 
+from __future__ import annotations
+
 import json
 import os
 import sqlite3
