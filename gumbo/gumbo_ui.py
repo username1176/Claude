@@ -42,6 +42,7 @@ from gumbo.models import (
     SubTask,
     create_sample_project,
 )
+from gumbo.graph_view import render_graph
 from gumbo.storage import delete_project, list_projects, load_project, save_project
 
 # ── Logging ──────────────────────────────────────────────────────────
@@ -104,6 +105,8 @@ _DEFAULTS: dict = {
     "use_real_executor": False,
     # Undo stack: list of (action, payload) tuples
     "undo_stack": [],
+    # View mode: "list" (default tab editor) or "graph" (Obsidian-style web)
+    "view_mode": "list",
 }
 
 for _k, _v in _DEFAULTS.items():
@@ -884,7 +887,41 @@ def _render_main() -> None:
 
     st.markdown("---")
 
-    # ── Tabs ─────────────────────────────────────────────────────────
+    # ── View toggle ─────────────────────────────────────────────────
+    v_list, v_graph, v_spacer = st.columns([1, 1, 4])
+    with v_list:
+        if st.button(
+            "\U0001f4cb List View",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == "list" else "secondary",
+            key="view_list_btn",
+        ):
+            st.session_state.view_mode = "list"
+            st.rerun()
+    with v_graph:
+        if st.button(
+            "\U0001f578\ufe0f Graph View",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == "graph" else "secondary",
+            key="view_graph_btn",
+        ):
+            st.session_state.view_mode = "graph"
+            st.rerun()
+
+    # ── Graph view ──────────────────────────────────────────────────
+    if st.session_state.view_mode == "graph":
+        render_graph(proj)
+
+        # Still show integrated result + compile below the graph
+        if st.session_state.run_complete and proj.final_result:
+            st.markdown("---")
+            st.subheader("\U0001f4cb Integrated Result")
+            _render_output(proj.final_result)
+
+        _render_compile_panel(proj)
+        return
+
+    # ── Tabs (list view) ─────────────────────────────────────────────
     if not proj.tabs:
         proj.add_tab("Tab 1")
 
