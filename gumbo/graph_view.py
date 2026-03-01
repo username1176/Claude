@@ -109,8 +109,8 @@ def _build_html(graph_json: str) -> str:
 <meta charset="utf-8">
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{ background: #1e1e2e; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; }}
-  svg  {{ width: 100%; height: 100%; display: block; }}
+  html, body {{ width: 100%; height: 100%; background: #1e1e2e; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; }}
+  svg  {{ display: block; width: 100%; height: 100%; }}
 
   /* Tooltip */
   #tooltip {{
@@ -169,11 +169,12 @@ def _build_html(graph_json: str) -> str:
 <script>
 const data = {graph_json};
 
-const width  = document.body.clientWidth;
-const height = document.body.clientHeight || 670;
+const width  = window.innerWidth  || document.documentElement.clientWidth;
+const height = window.innerHeight || document.documentElement.clientHeight;
 
 const svg = d3.select("#graph")
-    .attr("viewBox", [0, 0, width, height]);
+    .attr("width", width)
+    .attr("height", height);
 
 // ── Defs: glow filters + arrow markers ───────────────────────────
 const defs = svg.append("defs");
@@ -223,15 +224,20 @@ function linkColour(d) {{
 }}
 
 // ── Force simulation ─────────────────────────────────────────────
+const nNodes = data.nodes.length;
+const spread = Math.max(1, Math.sqrt(nNodes) / 3);
+
 const simulation = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id).distance(d =>
-      d.type === "sequence" ? 160 : d.source.type === "project" ? 180 : 90
+      d.type === "sequence" ? 200 * spread : d.source.type === "project" ? 240 * spread : 120 * spread
     ))
     .force("charge", d3.forceManyBody().strength(d =>
-      d.type === "project" ? -600 : d.type === "tab" ? -300 : -120
+      d.type === "project" ? -1200 : d.type === "tab" ? -600 : -250
     ))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 12));
+    .force("x", d3.forceX(width / 2).strength(0.03))
+    .force("y", d3.forceY(height / 2).strength(0.03))
+    .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 18));
 
 // ── Draw links ───────────────────────────────────────────────────
 const link = g.append("g")
@@ -326,12 +332,32 @@ function dragEnd(event, d) {{
   d.fx = null; d.fy = null;
 }}
 
-// ── Gentle initial zoom to fit ───────────────────────────────────
-setTimeout(() => {{
-  svg.transition().duration(800).call(
-    zoom.transform, d3.zoomIdentity.translate(0, 0).scale(0.95)
+// ── Zoom to fit after simulation settles ─────────────────────────
+function zoomToFit(duration) {{
+  const pad = 60;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  data.nodes.forEach(d => {{
+    const r = nodeRadius(d) + 20;
+    if (d.x - r < x0) x0 = d.x - r;
+    if (d.y - r < y0) y0 = d.y - r;
+    if (d.x + r > x1) x1 = d.x + r;
+    if (d.y + r > y1) y1 = d.y + r;
+  }});
+  const bw = x1 - x0 || 1;
+  const bh = y1 - y0 || 1;
+  const scale = Math.min((width - pad * 2) / bw, (height - pad * 2) / bh, 2.5);
+  const tx = (width  - bw * scale) / 2 - x0 * scale;
+  const ty = (height - bh * scale) / 2 - y0 * scale;
+  svg.transition().duration(duration).call(
+    zoom.transform,
+    d3.zoomIdentity.translate(tx, ty).scale(scale)
   );
-}}, 600);
+}}
+
+// Fit once the simulation has mostly stabilised
+simulation.on("end", () => zoomToFit(600));
+// Also fit after a short delay in case the sim is still warm
+setTimeout(() => zoomToFit(800), 1500);
 </script>
 </body>
 </html>"""
