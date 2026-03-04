@@ -228,7 +228,9 @@ st.markdown("""
     }
 
     /* ── Streamlit deep overrides ── */
-    .stApp p, .stApp span, .stApp div, .stApp label {
+    /* NOTE: Do NOT override font on span/div globally — it breaks
+       Streamlit's Material icon fonts used for expander arrows, etc. */
+    .stApp p, .stApp label {
         font-family: 'Inter', sans-serif;
     }
     [data-testid="stMetricLabel"] { font-family: 'Inter', sans-serif !important; color: #8B9A7F !important; }
@@ -296,7 +298,7 @@ st.markdown("""
         border-radius: 4px 12px 4px 12px !important;
         background: rgba(255, 255, 255, 0.3) !important;
     }
-    [data-testid="stExpander"] summary {
+    [data-testid="stExpander"] summary span[data-testid="stMarkdownContainer"] {
         font-family: 'Crimson Text', serif !important;
         color: #5C4B3F !important;
     }
