@@ -20,8 +20,8 @@
 //     first thing the user sees.  No camera, ARKit, or Vision
 //     work occurs until the user affirmatively taps "I Agree".
 //     The flag is runtime-only (never persisted); re-launching
-//     the app requires re-consent.  A "Revoke Consent" button
-//     lets the user withdraw at any time mid-session.
+//     the app requires re-consent.  A "Revoke Consent" option
+//     in Settings lets the user withdraw at any time.
 //
 //   • Single-Anchor Limit   – Only ONE ARBodyAnchor (or
 //     ARFaceAnchor) is accepted per session.  If ARKit adds a
@@ -48,16 +48,16 @@
 //     Vision inline and released.  Only the PoseClass enum value
 //     survives past the inference call, for display only.
 //
-//   • Stop at Any Time      – The user can halt everything by
-//     tapping "Stop Scan" or "Revoke Consent".  A persistent
-//     on-screen banner reminds the user that analysis is opt-in.
+//   • Stop / Pause at Any Time – The user can halt or pause
+//     everything via the HUD buttons.  A persistent on-screen
+//     banner reminds the user that analysis is opt-in.
 //
 //   • Confidence Gate       – Classifications are only displayed
-//     when at least 5 joints are detected above the confidence
+//     when enough joints are detected above a user-configurable
 //     threshold.  Low-confidence frames show "Analysing…".
 //
 // Legal references:
-//   GDPR  – Regulation (EU) 2016/679, Articles 5, 6(1)(a), 9
+//   GDPR  – Regulation (EU) 2016/679, Articles 5, 6(1)(a), 7(3), 9
 //   CCPA  – California Civil Code § 1798.100 et seq.
 //   BIPA  – Illinois 740 ILCS 14/ (biometric data)
 //   Apple – App Store Review Guidelines §5.1 (Privacy)
@@ -94,7 +94,10 @@ enum PoseClass: String {
 /// drawing, then immediately discarded.  Never written to any persistent store.
 struct PoseFeatureVector {
 
-    static let confidenceThreshold: Float = 0.4
+    /// Per-instance confidence threshold so the user's slider setting is
+    /// respected without a global mutable static.  Default matches the
+    /// app's initial slider position.
+    var confidenceThreshold: Float = 0.4
 
     // Head / neck
     var nose:          VNRecognizedPoint?
@@ -127,7 +130,7 @@ struct PoseFeatureVector {
     var rightKnee:     VNRecognizedPoint?
     var rightAnkle:    VNRecognizedPoint?
 
-    /// All joints above the confidence threshold.
+    /// All joints above the instance confidence threshold.
     var validJoints: [(name: String, point: VNRecognizedPoint)] {
         let all: [(String, VNRecognizedPoint?)] = [
             ("nose",          nose),
@@ -142,7 +145,7 @@ struct PoseFeatureVector {
             ("leftAnkle",     leftAnkle),    ("rightAnkle",     rightAnkle),
         ]
         return all.compactMap { name, pt in
-            guard let pt = pt, pt.confidence >= Self.confidenceThreshold else { return nil }
+            guard let pt = pt, pt.confidence >= confidenceThreshold else { return nil }
             return (name, pt)
         }
     }
@@ -164,7 +167,7 @@ struct PoseFeatureVector {
     //     ]
     //     for (i, joint) in ordered.enumerated() {
     //         let b = i * 3
-    //         if let j = joint, j.confidence >= Self.confidenceThreshold {
+    //         if let j = joint, j.confidence >= confidenceThreshold {
     //             array[b] = NSNumber(value: Float(j.location.x))
     //             array[b+1] = NSNumber(value: Float(j.location.y))
     //             array[b+2] = NSNumber(value: j.confidence)
@@ -186,37 +189,53 @@ class ViewController: UIViewController {
     /// and hosts SceneKit overlays (the 3-D pose-label text node).
     private var arView: ARSCNView!
 
-    /// Translucent HUD label near the bottom showing the current PoseClass.
+    /// Persistent opt-in banner across the top of the screen.
+    ///
+    /// ETHICAL — NON-CONSENSUAL USE PREVENTION:
+    /// Continuously reminds the user that body tracking is active and
+    /// deters pointing the camera at a non-consenting person.
+    private var optInReminderLabel: UILabel!
+
+    /// Animated indicator shown while scanning is active.
+    /// Pulses at 0.8 s intervals to make scanning state unambiguous.
+    private var scanningIndicatorLabel: UILabel!
+
+    /// 2-D HUD label near the bottom showing the current PoseClass.
     private var poseLabel: UILabel!
 
-    /// Start / Stop toggle button.  Disabled until consent + permission granted.
+    /// Start / Stop toggle.  Disabled until consent + camera permission
+    /// are both confirmed.
     private var startButton: UIButton!
 
-    /// Revokes consent immediately, stops scanning, and re-shows the consent
-    /// dialog.  Visible at all times so the user always has an escape.
+    /// Pause / Resume toggle.  Only enabled while a scan is running.
     ///
-    /// ETHICAL DESIGN:
-    /// Providing a prominent, always-accessible revocation path satisfies the
-    /// "withdraw at any time" requirement of GDPR Art. 7(3) and Apple HIG
-    /// privacy principles.  The button is never hidden — even mid-scan.
-    private var revokeConsentButton: UIButton!
+    /// Pausing suspends Vision processing and freezes the skeleton
+    /// overlay without stopping the ARKit session — useful for reviewing
+    /// a classification frame-by-frame.
+    private var pauseButton: UIButton!
 
-    /// Persistent on-screen banner reminding the user that this app is opt-in
-    /// only and analyses the consenting user exclusively.
-    ///
-    /// ETHICAL DESIGN — NON-CONSENSUAL USE PREVENTION:
-    /// This label is always visible during a scan so the user is continuously
-    /// aware that body-tracking is active and that consent can be revoked at
-    /// any time.  It also serves as a visual deterrent against pointing the
-    /// camera at someone who has not consented.
-    private var optInReminderLabel: UILabel!
+    /// Opens the settings panel (sensitivity slider + revoke consent).
+    private var settingsButton: UIButton!
+
+    // -------------------------------------------------------
+    // MARK: Settings Panel
+    // -------------------------------------------------------
+    // A bottom-sheet UIView that slides up when the user taps ⚙.
+    // Contains:
+    //   • Detection Sensitivity slider  (confidence threshold)
+    //   • Live FPS readout              (read-only, reflects actual rate)
+    //   • Revoke Consent button         (satisfies GDPR Art. 7(3))
+    //   • Legal compliance note
+    // -------------------------------------------------------
+
+    private var settingsPanel: UIView!
+    private var confidenceSlider: UISlider!
+    private var sensitivityValueLabel: UILabel!  // "Low / Medium / High"
+    private var fpsBadgeLabel: UILabel!          // "XX fps" inside panel
+    private var settingsPanelBottomConstraint: NSLayoutConstraint!
 
     // -------------------------------------------------------
     // MARK: Skeleton Overlay Layers
-    // -------------------------------------------------------
-    // ETHICAL NOTE: These layers render normalised joint coordinates
-    // mapped to screen space.  They display nothing and retain nothing
-    // when scanning is stopped.
     // -------------------------------------------------------
 
     private let skeletonBoneLayer  = CAShapeLayer()
@@ -232,9 +251,6 @@ class ViewController: UIViewController {
     // When ARBodyTrackingConfiguration is active (rear camera, world
     // space) the AVCaptureSession is NOT used — Vision processes the
     // ARFrame.capturedImage directly, avoiding dual-camera contention.
-    //
-    // When ARFaceTrackingConfiguration or ARWorldTrackingConfiguration
-    // is active the AVCaptureSession feeds the front camera to Vision.
     // -------------------------------------------------------
 
     private let captureSession = AVCaptureSession()
@@ -250,76 +266,94 @@ class ViewController: UIViewController {
     // -------------------------------------------------------
 
     /// Reusable on-device body pose detection request.
-    /// Runs on the Neural Engine — no network call.
     private var bodyPoseRequest = VNDetectHumanBodyPoseRequest()
 
     // -------------------------------------------------------
-    // MARK: Core ML (Placeholder)
+    // MARK: Core ML — GPU Acceleration
     // -------------------------------------------------------
+    // PERFORMANCE: The MLModelConfiguration below instructs Core ML to
+    // dispatch inference to whichever compute unit is fastest:
+    //   • Neural Engine (ANE)  — lowest latency for supported models
+    //   • GPU                  — fallback for models without ANE kernels
+    //   • CPU                  — final fallback
+    //
+    // Using `.all` lets the OS scheduler decide at runtime, avoiding
+    // the CPU bottleneck that arises with the default `.cpuOnly` setting.
+    // This is especially important on A12+ devices where the ANE provides
+    // ~10× the throughput of an equivalent CPU inference.
+    //
     // HOW TO INTEGRATE:
     //   1. Add PoseClassifier.mlmodel to the Xcode target.
     //   2. Xcode generates PoseClassifier Swift class.
     //   3. Uncomment the property and classifyWithCoreML below.
     //
-    // private var poseClassifier: PoseClassifier?
+    // private var poseClassifier: PoseClassifier? = {
+    //     let config = MLModelConfiguration()
+    //     config.computeUnits = .all   // Neural Engine + GPU + CPU
+    //     return try? PoseClassifier(configuration: config)
+    // }()
 
     // -------------------------------------------------------
-    // MARK: Frame Throttle
+    // MARK: Frame Throttle & Adaptive Frame Skip
+    // -------------------------------------------------------
+    // PERFORMANCE: Two complementary mechanisms limit CPU/GPU usage:
+    //
+    //   1. Fixed cap (≤15 fps) — `minimumProcessingInterval` ensures
+    //      we never process faster than 15 fps regardless of device speed.
+    //
+    //   2. Adaptive skip — if the measured throughput drops below
+    //      `adaptiveSkipFPSThreshold` (8 fps), every other frame is
+    //      skipped.  This prevents the visionQueue from backing up
+    //      when a slower device is under thermal pressure.
     // -------------------------------------------------------
 
     private var lastProcessedTimestamp: TimeInterval = 0
     private let minimumProcessingInterval: TimeInterval = 1.0 / 15.0
 
+    // FPS measurement
+    private var fpsWindowStart: TimeInterval  = 0
+    private var fpsFramesInWindow: Int        = 0
+    private var measuredFPS: Double           = 15.0
+
+    // Adaptive skip — engaged when measuredFPS drops below threshold
+    private let adaptiveSkipFPSThreshold: Double = 8.0
+    private var adaptiveSkipToggle: Bool          = false
+
     // -------------------------------------------------------
     // MARK: AR Body Tracking State
     // -------------------------------------------------------
     // ETHICAL — SINGLE-ANCHOR ENFORCEMENT:
-    // Only ONE body anchor is ever accepted.  `trackedAnchorID`
-    // records the UUID of the first ARBodyAnchor that ARKit reports.
-    // Any subsequent body anchor is refused in renderer(_:didAdd:for:).
-    // This prevents silently tracking a second person who has NOT
-    // consented.  The single-anchor constraint is reset only when
-    // the user explicitly stops and restarts a scan.
+    // Only ONE body anchor is ever accepted per session.
+    // `trackedAnchorID` stores the UUID of that anchor.
+    // All subsequent anchors are refused in renderer(_:didAdd:for:).
     // -------------------------------------------------------
 
-    /// `true` when ARBodyTrackingConfiguration is active (rear camera).
     private var usesBodyTracking = false
-
-    /// UUID of the single accepted ARBodyAnchor or ARFaceAnchor.
-    /// `nil` before the first body is detected or after a scan is stopped.
     private var trackedAnchorID: UUID?
-
-    /// Container SCNNode that holds the text label + billboard constraint.
-    /// Positioned at the head joint of the tracked anchor.
     private var poseTextContainerNode: SCNNode?
-
-    /// The last string written to the SCNText geometry by the render loop.
-    /// Used to avoid redundant geometry updates in renderer(_:updateAtTime:).
     private var lastRenderedTextString: String = ""
 
     // -------------------------------------------------------
     // MARK: Head Joint Cache
     // -------------------------------------------------------
-    // The head joint index in the skeleton definition is constant for
-    // the lifetime of a session.  We cache it on first lookup to avoid
-    // a linear O(n) search on every render frame.
-    // -------------------------------------------------------
 
-    /// Cached index of "head_joint" in the skeleton joint name array.
     private var cachedHeadJointIndex: Int?
 
     // -------------------------------------------------------
     // MARK: State
     // -------------------------------------------------------
 
-    /// ETHICAL: Set to `true` ONLY inside `userDidGrantConsent()`.
-    /// Runtime flag — never persisted.  Re-launch requires re-consent.
+    /// ETHICAL: Runtime-only, never persisted.  Re-launch requires re-consent.
     private var userHasConsented = false
 
     private var isScanning = false
+    private var isPaused   = false
     private var currentPose: PoseClass = .unknown
 
-    /// The SCNText node that shows the pose classification in AR space.
+    /// User-configurable joint confidence threshold (0.2 – 0.7).
+    /// Controlled by the sensitivity slider in the settings panel.
+    private var jointConfidenceThreshold: Float = 0.4
+
     private var poseTextNode: SCNNode?
 
     // -------------------------------------------------------
@@ -331,6 +365,7 @@ class ViewController: UIViewController {
         setupARView()
         setupSkeletonOverlay()
         setupHUD()
+        setupSettingsPanel()
         // ETHICAL: Consent screen shown synchronously at launch.
         // Zero camera / ARKit work occurs before "I Agree".
         presentConsentScreen()
@@ -391,14 +426,6 @@ class ViewController: UIViewController {
     private func setupHUD() {
 
         // ── Opt-In Reminder Banner ────────────────────────────────────
-        // ETHICAL — NON-CONSENSUAL USE PREVENTION:
-        // A persistent, always-visible banner at the top of the screen
-        // states that this app is opt-in self-analysis only.  It serves
-        // two purposes:
-        //   1. Continuously reminds the user that body tracking is active.
-        //   2. Deters misuse — if the camera were pointed at a non-
-        //      consenting person, the banner makes it clear this is not
-        //      the intended use.
         optInReminderLabel = UILabel()
         optInReminderLabel.translatesAutoresizingMaskIntoConstraints = false
         optInReminderLabel.text            = "Opt-in self-analysis only — you are the only subject"
@@ -410,6 +437,19 @@ class ViewController: UIViewController {
         optInReminderLabel.layer.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         optInReminderLabel.clipsToBounds   = true
         view.addSubview(optInReminderLabel)
+
+        // ── Scanning Indicator ────────────────────────────────────────
+        // Animated pulsing label that makes scanning state obvious.
+        // The dot "●" combined with the pulsing alpha makes it
+        // immediately clear to the user that live analysis is running.
+        scanningIndicatorLabel = UILabel()
+        scanningIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
+        scanningIndicatorLabel.text          = "● Scanning Your Pose…"
+        scanningIndicatorLabel.textColor     = UIColor.systemGreen
+        scanningIndicatorLabel.font          = UIFont.monospacedSystemFont(ofSize: 13, weight: .medium)
+        scanningIndicatorLabel.textAlignment = .center
+        scanningIndicatorLabel.alpha         = 0.0   // hidden until scanning starts
+        view.addSubview(scanningIndicatorLabel)
 
         // ── Pose Label ────────────────────────────────────────────────
         poseLabel = UILabel()
@@ -424,11 +464,14 @@ class ViewController: UIViewController {
         poseLabel.clipsToBounds     = true
         view.addSubview(poseLabel)
 
-        // ── Start / Stop Button ───────────────────────────────────────
+        // ── Bottom Button Row ─────────────────────────────────────────
+        // Three equal-width buttons laid out horizontally.
+
+        // Start / Stop
         startButton = UIButton(type: .system)
         startButton.translatesAutoresizingMaskIntoConstraints = false
         startButton.setTitle("Start Scan", for: .normal)
-        startButton.titleLabel?.font   = UIFont.systemFont(ofSize: 18, weight: .bold)
+        startButton.titleLabel?.font   = UIFont.systemFont(ofSize: 16, weight: .bold)
         startButton.backgroundColor    = UIColor.systemBlue.withAlphaComponent(0.85)
         startButton.setTitleColor(.white, for: .normal)
         startButton.layer.cornerRadius = 12
@@ -437,59 +480,322 @@ class ViewController: UIViewController {
         startButton.addTarget(self, action: #selector(startScanTapped), for: .touchUpInside)
         view.addSubview(startButton)
 
-        // ── Revoke Consent Button ─────────────────────────────────────
-        // ETHICAL — GDPR Art. 7(3) / Apple HIG:
-        // The user must be able to withdraw consent as easily as they
-        // granted it.  This button is always visible and accessible
-        // so the user is never "locked in" to a session.  Tapping it
-        // immediately stops all scanning and clears the consent flag.
-        revokeConsentButton = UIButton(type: .system)
-        revokeConsentButton.translatesAutoresizingMaskIntoConstraints = false
-        revokeConsentButton.setTitle("Revoke Consent", for: .normal)
-        revokeConsentButton.titleLabel?.font   = UIFont.systemFont(ofSize: 14, weight: .medium)
-        revokeConsentButton.backgroundColor    = UIColor.systemOrange.withAlphaComponent(0.85)
-        revokeConsentButton.setTitleColor(.white, for: .normal)
-        revokeConsentButton.layer.cornerRadius = 10
-        revokeConsentButton.isHidden           = true
-        revokeConsentButton.addTarget(
-            self, action: #selector(revokeConsentTapped), for: .touchUpInside)
-        view.addSubview(revokeConsentButton)
+        // Pause / Resume — only enabled while scanning
+        pauseButton = UIButton(type: .system)
+        pauseButton.translatesAutoresizingMaskIntoConstraints = false
+        pauseButton.setTitle("Pause", for: .normal)
+        pauseButton.titleLabel?.font   = UIFont.systemFont(ofSize: 16, weight: .bold)
+        pauseButton.backgroundColor    = UIColor.systemOrange.withAlphaComponent(0.85)
+        pauseButton.setTitleColor(.white, for: .normal)
+        pauseButton.layer.cornerRadius = 12
+        pauseButton.isEnabled          = false
+        pauseButton.alpha              = 0.5
+        pauseButton.addTarget(self, action: #selector(pauseResumeTapped), for: .touchUpInside)
+        view.addSubview(pauseButton)
+
+        // Settings (⚙) — enabled after consent
+        settingsButton = UIButton(type: .system)
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.setTitle("⚙ Settings", for: .normal)
+        settingsButton.titleLabel?.font   = UIFont.systemFont(ofSize: 16, weight: .bold)
+        settingsButton.backgroundColor    = UIColor.systemGray.withAlphaComponent(0.85)
+        settingsButton.setTitleColor(.white, for: .normal)
+        settingsButton.layer.cornerRadius = 12
+        settingsButton.isEnabled          = false
+        settingsButton.alpha              = 0.5
+        settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
+        view.addSubview(settingsButton)
 
         // ── Auto Layout ───────────────────────────────────────────────
         NSLayoutConstraint.activate([
-            // Opt-in reminder — full width at the very top
+            // Opt-in reminder — full width at very top
             optInReminderLabel.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor),
             optInReminderLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             optInReminderLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             optInReminderLabel.heightAnchor.constraint(equalToConstant: 28),
 
-            // Pose label — above the buttons
+            // Scanning indicator — just below the banner
+            scanningIndicatorLabel.topAnchor.constraint(
+                equalTo: optInReminderLabel.bottomAnchor, constant: 8),
+            scanningIndicatorLabel.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor, constant: 16),
+            scanningIndicatorLabel.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor, constant: -16),
+
+            // Pose label — above the button row
             poseLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: 20),
+                equalTo: view.leadingAnchor, constant: 16),
             poseLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -20),
+                equalTo: view.trailingAnchor, constant: -16),
             poseLabel.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -80),
             poseLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
 
-            // Start / Stop button — bottom centre
+            // Button row — three equal-width buttons at the bottom
             startButton.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor, constant: 20),
+                equalTo: view.leadingAnchor, constant: 12),
             startButton.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            startButton.heightAnchor.constraint(equalToConstant: 48),
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            startButton.heightAnchor.constraint(equalToConstant: 46),
 
-            // Revoke button — to the right of Start/Stop
-            revokeConsentButton.leadingAnchor.constraint(
-                equalTo: startButton.trailingAnchor, constant: 12),
-            revokeConsentButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor, constant: -20),
-            revokeConsentButton.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            revokeConsentButton.heightAnchor.constraint(equalToConstant: 48),
-            revokeConsentButton.widthAnchor.constraint(equalTo: startButton.widthAnchor),
+            pauseButton.leadingAnchor.constraint(
+                equalTo: startButton.trailingAnchor, constant: 8),
+            pauseButton.bottomAnchor.constraint(equalTo: startButton.bottomAnchor),
+            pauseButton.heightAnchor.constraint(equalTo: startButton.heightAnchor),
+            pauseButton.widthAnchor.constraint(equalTo: startButton.widthAnchor),
+
+            settingsButton.leadingAnchor.constraint(
+                equalTo: pauseButton.trailingAnchor, constant: 8),
+            settingsButton.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor, constant: -12),
+            settingsButton.bottomAnchor.constraint(equalTo: startButton.bottomAnchor),
+            settingsButton.heightAnchor.constraint(equalTo: startButton.heightAnchor),
+            settingsButton.widthAnchor.constraint(equalTo: startButton.widthAnchor),
         ])
+    }
+
+    // -------------------------------------------------------
+    // MARK: Settings Panel Setup
+    // -------------------------------------------------------
+    // Bottom-sheet slide-up panel.  Initially translated fully off-screen
+    // so it is invisible.  Slides into view on settingsTapped().
+    // -------------------------------------------------------
+
+    private func setupSettingsPanel() {
+        settingsPanel = UIView()
+        settingsPanel.translatesAutoresizingMaskIntoConstraints = false
+        settingsPanel.backgroundColor  = UIColor.systemBackground.withAlphaComponent(0.97)
+        settingsPanel.layer.cornerRadius    = 20
+        settingsPanel.layer.maskedCorners   = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        settingsPanel.layer.shadowColor     = UIColor.black.cgColor
+        settingsPanel.layer.shadowOpacity   = 0.25
+        settingsPanel.layer.shadowOffset    = CGSize(width: 0, height: -4)
+        settingsPanel.layer.shadowRadius    = 12
+        view.addSubview(settingsPanel)
+
+        // Panel is off-screen initially (100 pts below the bottom edge).
+        settingsPanelBottomConstraint = settingsPanel.bottomAnchor.constraint(
+            equalTo: view.bottomAnchor, constant: 400)
+
+        NSLayoutConstraint.activate([
+            settingsPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            settingsPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            settingsPanelBottomConstraint,
+        ])
+
+        buildSettingsPanelContents()
+    }
+
+    private func buildSettingsPanelContents() {
+        // ── Drag Handle ───────────────────────────────────────────────
+        let handle = UIView()
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        handle.backgroundColor    = UIColor.systemGray3
+        handle.layer.cornerRadius = 2.5
+        settingsPanel.addSubview(handle)
+
+        // ── Title ─────────────────────────────────────────────────────
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text      = "Settings"
+        titleLabel.font      = UIFont.systemFont(ofSize: 18, weight: .bold)
+        titleLabel.textColor = .label
+        settingsPanel.addSubview(titleLabel)
+
+        // ── Close Button ──────────────────────────────────────────────
+        let closeButton = UIButton(type: .system)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.setTitle("Done", for: .normal)
+        closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        closeButton.addTarget(self, action: #selector(closeSettingsTapped), for: .touchUpInside)
+        settingsPanel.addSubview(closeButton)
+
+        // ── Sensitivity Section ───────────────────────────────────────
+        // LEGAL / ETHICAL NOTE:
+        // The sensitivity slider adjusts the Vision joint confidence
+        // threshold.  Higher sensitivity (lower threshold) may detect
+        // joints in challenging lighting but can increase false positives.
+        // Lower sensitivity (higher threshold) only accepts high-certainty
+        // joint readings, reducing noise on clear backgrounds.
+        // This setting is ephemeral — never stored or transmitted.
+
+        let sensitivityHeader = sectionHeader("Detection Sensitivity")
+        settingsPanel.addSubview(sensitivityHeader)
+
+        let sensitivityDesc = UILabel()
+        sensitivityDesc.translatesAutoresizingMaskIntoConstraints = false
+        sensitivityDesc.text          = "Controls how confidently Vision must detect each joint. Higher sensitivity works better in low light; lower sensitivity reduces false reads."
+        sensitivityDesc.font          = UIFont.systemFont(ofSize: 13)
+        sensitivityDesc.textColor     = .secondaryLabel
+        sensitivityDesc.numberOfLines = 0
+        settingsPanel.addSubview(sensitivityDesc)
+
+        let preciseLabel = UILabel()
+        preciseLabel.translatesAutoresizingMaskIntoConstraints = false
+        preciseLabel.text      = "Precise"
+        preciseLabel.font      = UIFont.systemFont(ofSize: 12, weight: .medium)
+        preciseLabel.textColor = .secondaryLabel
+        settingsPanel.addSubview(preciseLabel)
+
+        confidenceSlider = UISlider()
+        confidenceSlider.translatesAutoresizingMaskIntoConstraints = false
+        confidenceSlider.minimumValue = 0.0    // maps to threshold 0.7 (precise)
+        confidenceSlider.maximumValue = 1.0    // maps to threshold 0.2 (sensitive)
+        confidenceSlider.value        = 0.5    // default → threshold 0.45
+        confidenceSlider.minimumTrackTintColor = UIColor.systemGreen
+        confidenceSlider.addTarget(
+            self, action: #selector(sensitivityChanged(_:)), for: .valueChanged)
+        settingsPanel.addSubview(confidenceSlider)
+
+        let sensitiveLabel = UILabel()
+        sensitiveLabel.translatesAutoresizingMaskIntoConstraints = false
+        sensitiveLabel.text      = "Sensitive"
+        sensitiveLabel.font      = UIFont.systemFont(ofSize: 12, weight: .medium)
+        sensitiveLabel.textColor = .secondaryLabel
+        settingsPanel.addSubview(sensitiveLabel)
+
+        sensitivityValueLabel = UILabel()
+        sensitivityValueLabel.translatesAutoresizingMaskIntoConstraints = false
+        sensitivityValueLabel.text          = "Medium"
+        sensitivityValueLabel.font          = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        sensitivityValueLabel.textColor     = .systemGreen
+        sensitivityValueLabel.textAlignment = .center
+        settingsPanel.addSubview(sensitivityValueLabel)
+
+        // ── FPS Badge ─────────────────────────────────────────────────
+        fpsBadgeLabel = UILabel()
+        fpsBadgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        fpsBadgeLabel.text            = "Frame Rate: — fps"
+        fpsBadgeLabel.font            = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        fpsBadgeLabel.textColor       = .secondaryLabel
+        fpsBadgeLabel.textAlignment   = .center
+        settingsPanel.addSubview(fpsBadgeLabel)
+
+        // ── Revoke Consent Button ─────────────────────────────────────
+        // LEGAL — GDPR Art. 7(3):
+        // "The data subject shall have the right to withdraw his or
+        // her consent at any time."  This button provides that right
+        // in a prominent, always-accessible location.
+        //
+        // Withdrawal immediately stops all scanning and clears the
+        // runtime consent flag.  Re-consent requires re-presenting the
+        // full consent dialog — no shortcut is provided.
+
+        let revokeButton = UIButton(type: .system)
+        revokeButton.translatesAutoresizingMaskIntoConstraints = false
+        revokeButton.setTitle("Revoke Consent & Stop", for: .normal)
+        revokeButton.titleLabel?.font     = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        revokeButton.setTitleColor(.white, for: .normal)
+        revokeButton.backgroundColor      = UIColor.systemRed.withAlphaComponent(0.85)
+        revokeButton.layer.cornerRadius   = 12
+        revokeButton.addTarget(
+            self, action: #selector(revokeConsentTapped), for: .touchUpInside)
+        settingsPanel.addSubview(revokeButton)
+
+        // ── Legal Notice ──────────────────────────────────────────────
+        let legalLabel = UILabel()
+        legalLabel.translatesAutoresizingMaskIntoConstraints = false
+        legalLabel.text          = "All processing is on-device and ephemeral. No biometric data is stored or shared. Compliant with GDPR Art. 9, CCPA, and BIPA."
+        legalLabel.font          = UIFont.systemFont(ofSize: 11)
+        legalLabel.textColor     = .tertiaryLabel
+        legalLabel.numberOfLines = 0
+        legalLabel.textAlignment = .center
+        settingsPanel.addSubview(legalLabel)
+
+        // ── Layout ────────────────────────────────────────────────────
+        let sliderRow = UIView()
+        sliderRow.translatesAutoresizingMaskIntoConstraints = false
+        settingsPanel.addSubview(sliderRow)
+
+        NSLayoutConstraint.activate([
+            handle.topAnchor.constraint(
+                equalTo: settingsPanel.topAnchor, constant: 10),
+            handle.centerXAnchor.constraint(equalTo: settingsPanel.centerXAnchor),
+            handle.widthAnchor.constraint(equalToConstant: 40),
+            handle.heightAnchor.constraint(equalToConstant: 5),
+
+            titleLabel.topAnchor.constraint(
+                equalTo: handle.bottomAnchor, constant: 14),
+            titleLabel.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+
+            closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            closeButton.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
+            sensitivityHeader.topAnchor.constraint(
+                equalTo: titleLabel.bottomAnchor, constant: 20),
+            sensitivityHeader.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            sensitivityHeader.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
+            sensitivityDesc.topAnchor.constraint(
+                equalTo: sensitivityHeader.bottomAnchor, constant: 6),
+            sensitivityDesc.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            sensitivityDesc.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
+            sliderRow.topAnchor.constraint(
+                equalTo: sensitivityDesc.bottomAnchor, constant: 10),
+            sliderRow.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            sliderRow.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+            sliderRow.heightAnchor.constraint(equalToConstant: 30),
+
+            preciseLabel.leadingAnchor.constraint(equalTo: sliderRow.leadingAnchor),
+            preciseLabel.centerYAnchor.constraint(equalTo: sliderRow.centerYAnchor),
+
+            sensitiveLabel.trailingAnchor.constraint(equalTo: sliderRow.trailingAnchor),
+            sensitiveLabel.centerYAnchor.constraint(equalTo: sliderRow.centerYAnchor),
+
+            confidenceSlider.leadingAnchor.constraint(
+                equalTo: preciseLabel.trailingAnchor, constant: 8),
+            confidenceSlider.trailingAnchor.constraint(
+                equalTo: sensitiveLabel.leadingAnchor, constant: -8),
+            confidenceSlider.centerYAnchor.constraint(equalTo: sliderRow.centerYAnchor),
+
+            sensitivityValueLabel.topAnchor.constraint(
+                equalTo: sliderRow.bottomAnchor, constant: 4),
+            sensitivityValueLabel.centerXAnchor.constraint(
+                equalTo: settingsPanel.centerXAnchor),
+
+            fpsBadgeLabel.topAnchor.constraint(
+                equalTo: sensitivityValueLabel.bottomAnchor, constant: 16),
+            fpsBadgeLabel.centerXAnchor.constraint(
+                equalTo: settingsPanel.centerXAnchor),
+
+            revokeButton.topAnchor.constraint(
+                equalTo: fpsBadgeLabel.bottomAnchor, constant: 20),
+            revokeButton.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            revokeButton.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+            revokeButton.heightAnchor.constraint(equalToConstant: 48),
+
+            legalLabel.topAnchor.constraint(
+                equalTo: revokeButton.bottomAnchor, constant: 14),
+            legalLabel.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            legalLabel.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+            legalLabel.bottomAnchor.constraint(
+                equalTo: settingsPanel.bottomAnchor,
+                constant: -(view.safeAreaInsets.bottom + 20)),
+        ])
+    }
+
+    /// Creates a styled section-header label for use inside the settings panel.
+    private func sectionHeader(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text      = text
+        label.font      = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .label
+        return label
     }
 
     // -------------------------------------------------------
@@ -514,7 +820,7 @@ class ViewController: UIViewController {
         ✔  Results are discarded immediately after display
         ✔  Only YOUR body is tracked — one person per session
         ✔  Other people in frame are ignored, not analysed
-        ✔  You may stop or revoke consent at any time
+        ✔  You may pause, stop, or revoke consent at any time
 
         This app processes body-pose data that may be considered \
         biometric information under laws such as BIPA (Illinois), \
@@ -546,13 +852,30 @@ class ViewController: UIViewController {
 
     private func userDidGrantConsent() {
         userHasConsented = true
-        revokeConsentButton.isHidden = false
+        settingsButton.isEnabled = true
+        settingsButton.alpha     = 1.0
         requestCameraPermission()
     }
 
     private func userDidDeclineConsent() {
+        // ETHICAL — EDUCATIONAL MESSAGE ON DECLINE:
+        // Rather than a terse error, explain what the user would be
+        // missing and how their data would have been protected.  This
+        // respects user autonomy while ensuring they have accurate
+        // information about the app's privacy-first design.
         userHasConsented = false
-        revokeConsentButton.isHidden = true
+        showEducationalMessage(
+            title: "No problem!",
+            message: """
+            You've chosen not to participate — that's completely fine.
+
+            Self-Pose Demo only works when you actively consent.  \
+            No camera access, ARKit sessions, or any pose analysis \
+            will occur without your explicit agreement.
+
+            If you change your mind, simply re-launch the app to \
+            see the consent screen again.
+            """)
         poseLabel.text = "Consent required to use this app."
     }
 
@@ -562,23 +885,25 @@ class ViewController: UIViewController {
 
     /// Immediately stops all scanning and clears consent.
     ///
-    /// ETHICAL — GDPR Art. 7(3):
+    /// LEGAL — GDPR Art. 7(3):
     /// "The data subject shall have the right to withdraw his or
     /// her consent at any time."  Withdrawal must be as easy as
-    /// giving consent — hence this always-visible button.
+    /// giving consent — hence this button in the settings panel.
     @objc private func revokeConsentTapped() {
+        hideSettingsPanel()
         stopScanning()
-        userHasConsented        = false
-        revokeConsentButton.isHidden = true
-        startButton.isEnabled   = false
-        startButton.alpha       = 0.5
-        poseLabel.text          = "Consent revoked. Re-launch to start again."
-        optInReminderLabel.text =
-            "Opt-in self-analysis only — you are the only subject"
-        optInReminderLabel.backgroundColor =
-            UIColor.systemIndigo.withAlphaComponent(0.75)
-        // Re-present consent screen so user can immediately re-consent
-        // if they tapped by mistake.
+        userHasConsented         = false
+        startButton.isEnabled    = false
+        startButton.alpha        = 0.5
+        settingsButton.isEnabled = false
+        settingsButton.alpha     = 0.5
+        poseLabel.text           = "Consent revoked."
+        optInReminderLabel.text  = "Opt-in self-analysis only — you are the only subject"
+        optInReminderLabel.backgroundColor = UIColor.systemIndigo.withAlphaComponent(0.75)
+
+        // Offer to re-consent immediately (handles accidental taps).
+        // ETHICAL: Re-presenting the full consent dialog ensures the
+        // user cannot bypass consent with a simple toggle.
         presentConsentScreen()
     }
 
@@ -599,20 +924,57 @@ class ViewController: UIViewController {
     private func onCameraPermissionGranted() {
         startButton.isEnabled = true
         startButton.alpha     = 1.0
-        poseLabel.text        = "Tap \"Start Scan\" to begin."
+        poseLabel.text        = "Tap \"Start Scan\" to begin your fitness session."
     }
 
     private func onCameraPermissionDenied() {
+        // ETHICAL — EDUCATIONAL MESSAGE ON PERMISSION DENIAL:
+        // Explain clearly why camera access is needed and how to enable
+        // it.  Do not guilt-trip; simply provide actionable information.
+        showEducationalMessage(
+            title: "Camera Access Required",
+            message: """
+            Self-Pose Demo needs camera access to perform real-time \
+            body pose analysis.
+
+            Without camera access, no analysis can occur.  All camera \
+            data is processed on-device and immediately discarded — \
+            it is never stored or sent anywhere.
+
+            To enable camera access:
+            Settings → Privacy & Security → Camera → Self-Pose Demo
+
+            You can disable access again at any time from Settings.
+            """,
+            settingsAction: true)
+    }
+
+    // -------------------------------------------------------
+    // MARK: Educational Error Messages
+    // -------------------------------------------------------
+    // All error states are communicated through constructive, plain-
+    // language messages that explain the privacy-protective intent of
+    // each restriction.  This satisfies the "transparency" requirement
+    // of GDPR Art. 5(1)(a) and Apple HIG privacy guidelines.
+    // -------------------------------------------------------
+
+    private func showEducationalMessage(
+        title: String,
+        message: String,
+        settingsAction: Bool = false
+    ) {
         let alert = UIAlertController(
-            title:   "Camera Access Required",
-            message: "Please enable camera in Settings > Privacy & Security > Camera.",
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            title: title, message: message, preferredStyle: .alert)
+
+        if settingsAction {
+            alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
         present(alert, animated: true)
     }
 
@@ -625,79 +987,58 @@ class ViewController: UIViewController {
         isScanning ? stopScanning() : startScanning()
     }
 
-    /// Starts the ARKit session and — when not using body tracking — the
-    /// parallel AVCaptureSession for Vision.
-    ///
-    /// ETHICAL: Nothing begins until consent AND OS camera permission are
-    /// both confirmed.
-    ///
-    /// SESSION CONFIGURATION PRIORITY:
-    ///   1. ARBodyTrackingConfiguration (rear camera, world-space body
-    ///      skeleton via ARBodyAnchor).  Requires A12+ chip, iOS 13+.
-    ///      Vision processes ARFrame.capturedImage directly — no separate
-    ///      AVCaptureSession needed.
-    ///   2. ARFaceTrackingConfiguration (front TrueDepth camera).
-    ///      AVCaptureSession feeds front-camera frames to Vision.
-    ///   3. ARWorldTrackingConfiguration (rear camera, fallback).
-    ///      AVCaptureSession feeds front-camera frames to Vision.
+    @objc private func pauseResumeTapped() {
+        guard isScanning else { return }
+        isPaused.toggle()
+        updateScanningUI()
+    }
+
+    @objc private func settingsTapped() {
+        showSettingsPanel()
+    }
+
+    @objc private func closeSettingsTapped() {
+        hideSettingsPanel()
+    }
+
     private func startScanning() {
         guard userHasConsented, !isScanning else { return }
 
-        // ── Choose ARKit configuration ────────────────────────────────
         if ARBodyTrackingConfiguration.isSupported {
-            // PREFERRED: Full body skeleton in world space (rear camera).
-            // ARBodyAnchor provides 3-D joint positions used to place the
-            // SCNText label above the user's head.  Vision runs on the
-            // ARFrame pixel buffer — no separate AVCaptureSession.
             let config = ARBodyTrackingConfiguration()
             config.isLightEstimationEnabled = true
-            arView.session.run(config, options: [.resetTracking,
-                                                  .removeExistingAnchors])
+            arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
             usesBodyTracking = true
         } else if ARFaceTrackingConfiguration.isSupported {
             let config = ARFaceTrackingConfiguration()
             config.isLightEstimationEnabled = true
-            arView.session.run(config, options: [.resetTracking,
-                                                  .removeExistingAnchors])
+            arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
             usesBodyTracking = false
             setupCaptureSession(cameraPosition: .front)
         } else {
             let config = ARWorldTrackingConfiguration()
-            arView.session.run(config, options: [.resetTracking,
-                                                  .removeExistingAnchors])
+            arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
             usesBodyTracking = false
             setupCaptureSession(cameraPosition: .front)
         }
 
         isScanning             = true
+        isPaused               = false
         trackedAnchorID        = nil
         cachedHeadJointIndex   = nil
         currentPose            = .unknown
         lastProcessedTimestamp = 0
         lastRenderedTextString = ""
-        poseLabel.text         = PoseClass.unknown.rawValue
+        fpsWindowStart         = 0
+        fpsFramesInWindow      = 0
+        measuredFPS            = 15.0
+        adaptiveSkipToggle     = false
 
-        startButton.setTitle("Stop Scan", for: .normal)
-        startButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.85)
+        updateScanningUI()
 
-        optInReminderLabel.backgroundColor =
-            UIColor.systemGreen.withAlphaComponent(0.75)
-        optInReminderLabel.text =
-            "Scanning active — opt-in self-analysis only"
-
-        // For body-tracking mode the text node is created lazily when the
-        // first ARBodyAnchor arrives.  For face / world tracking modes we
-        // create a default floating node now; it will be re-parented when
-        // an anchor appears.
-        if !usesBodyTracking {
-            addDefaultPoseTextNode()
-        }
+        if !usesBodyTracking { addDefaultPoseTextNode() }
     }
 
-    /// Tears down all sessions.
-    ///
-    /// ETHICAL: Halting the scan immediately ceases ALL frame processing.
-    /// No further pixel data, body anchors, or joint coordinates are read.
     private func stopScanning() {
         guard isScanning else { return }
 
@@ -707,31 +1048,148 @@ class ViewController: UIViewController {
         }
 
         isScanning           = false
+        isPaused             = false
         currentPose          = .unknown
         trackedAnchorID      = nil
         cachedHeadJointIndex = nil
         usesBodyTracking     = false
 
         DispatchQueue.main.async { [weak self] in
-            self?.startButton.setTitle("Start Scan", for: .normal)
-            self?.startButton.backgroundColor =
-                UIColor.systemBlue.withAlphaComponent(0.85)
-            self?.poseLabel.text = "Scan stopped."
-            self?.optInReminderLabel.text =
-                "Opt-in self-analysis only — you are the only subject"
-            self?.optInReminderLabel.backgroundColor =
-                UIColor.systemIndigo.withAlphaComponent(0.75)
+            self?.updateScanningUI()
             self?.removePoseTextNode()
             self?.clearSkeletonOverlay()
         }
     }
 
+    /// Centralises all UI state changes so start / stop / pause / resume
+    /// never leave controls in an inconsistent state.
+    private func updateScanningUI() {
+        if isScanning {
+            startButton.setTitle("Stop Scan", for: .normal)
+            startButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.85)
+
+            pauseButton.isEnabled = true
+            pauseButton.alpha     = 1.0
+            pauseButton.setTitle(isPaused ? "Resume" : "Pause", for: .normal)
+            pauseButton.backgroundColor = isPaused
+                ? UIColor.systemGreen.withAlphaComponent(0.85)
+                : UIColor.systemOrange.withAlphaComponent(0.85)
+
+            optInReminderLabel.backgroundColor = isPaused
+                ? UIColor.systemOrange.withAlphaComponent(0.75)
+                : UIColor.systemGreen.withAlphaComponent(0.75)
+            optInReminderLabel.text = isPaused
+                ? "Analysis paused — tap Resume to continue"
+                : "Scanning active — opt-in self-analysis only"
+
+            poseLabel.text = isPaused
+                ? "Paused"
+                : currentPose.rawValue
+
+            // Scanning indicator — pulse when active, freeze when paused
+            if isPaused {
+                stopScanningIndicatorAnimation()
+                scanningIndicatorLabel.text  = "⏸ Analysis Paused"
+                scanningIndicatorLabel.textColor = UIColor.systemOrange
+            } else {
+                scanningIndicatorLabel.text  = "● Scanning Your Pose…"
+                scanningIndicatorLabel.textColor = UIColor.systemGreen
+                startScanningIndicatorAnimation()
+            }
+            UIView.animate(withDuration: 0.2) {
+                self.scanningIndicatorLabel.alpha = 1.0
+            }
+
+        } else {
+            startButton.setTitle("Start Scan", for: .normal)
+            startButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.85)
+
+            pauseButton.isEnabled = false
+            pauseButton.alpha     = 0.5
+            pauseButton.setTitle("Pause", for: .normal)
+            pauseButton.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.85)
+
+            optInReminderLabel.text = "Opt-in self-analysis only — you are the only subject"
+            optInReminderLabel.backgroundColor = UIColor.systemIndigo.withAlphaComponent(0.75)
+
+            poseLabel.text = "Scan stopped."
+
+            stopScanningIndicatorAnimation()
+            UIView.animate(withDuration: 0.3) {
+                self.scanningIndicatorLabel.alpha = 0.0
+            }
+            fpsBadgeLabel?.text = "Frame Rate: — fps"
+        }
+    }
+
+    // -------------------------------------------------------
+    // MARK: Scanning Indicator Animation
+    // -------------------------------------------------------
+
+    private func startScanningIndicatorAnimation() {
+        scanningIndicatorLabel.layer.removeAllAnimations()
+        UIView.animate(
+            withDuration: 0.8,
+            delay: 0,
+            options: [.repeat, .autoreverse, .allowUserInteraction]
+        ) {
+            self.scanningIndicatorLabel.alpha = 0.25
+        }
+    }
+
+    private func stopScanningIndicatorAnimation() {
+        scanningIndicatorLabel.layer.removeAllAnimations()
+        scanningIndicatorLabel.alpha = 1.0
+    }
+
+    // -------------------------------------------------------
+    // MARK: Settings Panel Animations
+    // -------------------------------------------------------
+
+    private func showSettingsPanel() {
+        // Update FPS badge before showing panel so it reflects current rate
+        fpsBadgeLabel.text = String(format: "Frame Rate: %.0f fps  (adaptive skip %@)",
+                                    measuredFPS,
+                                    measuredFPS < adaptiveSkipFPSThreshold ? "ON" : "off")
+        settingsPanelBottomConstraint.constant = 0
+        UIView.animate(withDuration: 0.35,
+                       delay: 0,
+                       usingSpringWithDamping: 0.85,
+                       initialSpringVelocity: 0.3,
+                       options: .curveEaseOut) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    private func hideSettingsPanel() {
+        settingsPanelBottomConstraint.constant = 400
+        UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseIn) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    // -------------------------------------------------------
+    // MARK: Sensitivity Slider
+    // -------------------------------------------------------
+
+    @objc private func sensitivityChanged(_ slider: UISlider) {
+        // Slider 0.0 (Precise) → threshold 0.70
+        // Slider 0.5 (Medium)  → threshold 0.45
+        // Slider 1.0 (Sensitive) → threshold 0.20
+        let threshold = 0.70 - slider.value * 0.50
+        jointConfidenceThreshold = threshold
+
+        let label: String
+        switch slider.value {
+        case 0.0..<0.33:  label = "Precise"
+        case 0.33..<0.67: label = "Medium"
+        default:          label = "Sensitive"
+        }
+        sensitivityValueLabel.text = label
+    }
+
     // -------------------------------------------------------
     // MARK: AVCaptureSession Setup
-    // -------------------------------------------------------
-    // Used ONLY when body tracking is unavailable (face / world mode).
-    // When ARBodyTrackingConfiguration is active, Vision runs on the
-    // ARFrame.capturedImage delivered via session(_:didUpdate:).
     // -------------------------------------------------------
 
     private func setupCaptureSession(cameraPosition: AVCaptureDevice.Position) {
@@ -746,8 +1204,18 @@ class ViewController: UIViewController {
         guard let camera = AVCaptureDevice.default(
             .builtInWideAngleCamera, for: .video, position: cameraPosition)
         else {
-            print("[SelfPoseDemo] Camera unavailable (position: \(cameraPosition)).")
             captureSession.commitConfiguration()
+            DispatchQueue.main.async { [weak self] in
+                self?.showEducationalMessage(
+                    title: "Camera Unavailable",
+                    message: """
+                    The \(cameraPosition == .front ? "front" : "rear") camera could not be \
+                    accessed on this device.
+
+                    Self-Pose Demo requires a camera to analyse body pose.  \
+                    No analysis will occur without camera access.
+                    """)
+            }
             return
         }
 
@@ -755,8 +1223,8 @@ class ViewController: UIViewController {
             let input = try AVCaptureDeviceInput(device: camera)
             if captureSession.canAddInput(input) { captureSession.addInput(input) }
         } catch {
-            print("[SelfPoseDemo] Cannot create video input: \(error)")
             captureSession.commitConfiguration()
+            print("[SelfPoseDemo] Cannot create video input: \(error)")
             return
         }
 
@@ -782,25 +1250,7 @@ class ViewController: UIViewController {
     // -------------------------------------------------------
     // MARK: Vision — Unified Frame Processing
     // -------------------------------------------------------
-    // Two entry points feed into a single processing pipeline:
-    //
-    //   1. captureOutput(_:didOutput:from:)
-    //        → Called by AVCaptureSession (face / world mode).
-    //        → Calls processPixelBuffer(_:timestamp:orientation:)
-    //
-    //   2. session(_:didUpdate:)   (ARSessionDelegate)
-    //        → Called by ARKit every frame (body tracking mode).
-    //        → Calls processPixelBuffer(_:timestamp:orientation:)
-    //
-    // ETHICAL: Both paths enforce consent + active-scan gates before
-    // any pixel data is touched.
-    // -------------------------------------------------------
 
-    /// Shared pipeline for Vision body pose detection.
-    ///
-    /// Called on `visionQueue`.  The pixel buffer is consumed inline by
-    /// Vision and immediately released — it is NEVER retained, copied,
-    /// written to disk, or transmitted.
     private func processPixelBuffer(
         _ pixelBuffer: CVPixelBuffer,
         timestamp: TimeInterval,
@@ -809,14 +1259,33 @@ class ViewController: UIViewController {
         // ── Gate 1: Consent ───────────────────────────────────────────
         guard userHasConsented else { return }
 
-        // ── Gate 2: Active scan ───────────────────────────────────────
-        guard isScanning else { return }
+        // ── Gate 2: Active (not stopped, not paused) ──────────────────
+        guard isScanning, !isPaused else { return }
 
-        // ── Gate 3: Frame throttle (≤15 fps) ──────────────────────────
+        // ── Gate 3: Frame throttle (≤ 15 fps) ────────────────────────
         guard timestamp - lastProcessedTimestamp >= minimumProcessingInterval else {
             return
         }
         lastProcessedTimestamp = timestamp
+
+        // ── Gate 4: Adaptive frame skip ───────────────────────────────
+        // PERFORMANCE: Measure throughput in 1-second windows.  If the
+        // device is falling behind (< 8 fps net), skip every other frame
+        // to reduce CPU pressure and avoid visionQueue back-pressure.
+        fpsFramesInWindow += 1
+        if fpsWindowStart == 0 { fpsWindowStart = timestamp }
+        let window = timestamp - fpsWindowStart
+        if window >= 1.0 {
+            measuredFPS       = Double(fpsFramesInWindow) / window
+            fpsFramesInWindow = 0
+            fpsWindowStart    = timestamp
+        }
+        if measuredFPS < adaptiveSkipFPSThreshold {
+            adaptiveSkipToggle.toggle()
+            if adaptiveSkipToggle { return }   // skip this frame
+        } else {
+            adaptiveSkipToggle = false
+        }
 
         // ── Run Vision ────────────────────────────────────────────────
         let handler = VNImageRequestHandler(
@@ -838,16 +1307,11 @@ class ViewController: UIViewController {
             return
         }
 
-        // ── Gate 4: Single-user enforcement ───────────────────────────
+        // ── Gate 5: Single-user enforcement ───────────────────────────
         // ETHICAL — AVOIDING NON-CONSENSUAL ANALYSIS:
-        //   Only the FIRST observation (primary person) is processed.
+        //   Only the FIRST (primary) observation is processed.
         //   Any additional observations are silently discarded — no data
-        //   about non-consenting bystanders is touched.
-        //
-        // NOTE: We no longer freeze on multi-person frames.  Instead we
-        // strictly analyse only the first detected person (the consenting
-        // user) and ignore all others.  This is less disruptive for gym
-        // environments while still protecting bystander privacy.
+        //   about non-consenting bystanders is ever touched.
         let observation = observations[0]
 
         guard let features = extractPoseFeatures(from: observation) else {
@@ -855,10 +1319,10 @@ class ViewController: UIViewController {
             return
         }
 
-        // ── Gate 5: Confidence threshold ──────────────────────────────
-        // Require at least 5 joints above threshold before classifying.
-        // Low-confidence partial detections show "Analysing…" instead of
-        // a misleading label.
+        // ── Gate 6: Confidence threshold ──────────────────────────────
+        // Require at least 5 joints above the user-configured threshold.
+        // Low-confidence partial detections show "Analysing…" rather than
+        // a potentially misleading classification.
         guard features.detectedJointCount >= 5 else {
             updatePoseLabel(with: .unknown)
             drawSkeleton(from: features)
@@ -869,9 +1333,6 @@ class ViewController: UIViewController {
         updatePoseLabel(with: pose)
         drawSkeleton(from: features)
 
-        // If no anchor is available yet (world-tracking fallback),
-        // attempt to position the text label via hitTest from the
-        // Vision nose point projected into AR space.
         if !usesBodyTracking && trackedAnchorID == nil {
             positionLabelViaHitTest(features: features)
         }
@@ -879,13 +1340,6 @@ class ViewController: UIViewController {
 
     // -------------------------------------------------------
     // MARK: Pose Feature Extraction
-    // -------------------------------------------------------
-    // Extracts all 19 body joints from the Vision observation.
-    // Key joints for fitness activity recognition:
-    //   • Shoulders  — arm position, overhead movements
-    //   • Hips       — stance width, hip hinge
-    //   • Knees      — squat depth, leg drive
-    //   • Ankles     — weight distribution
     // -------------------------------------------------------
 
     private func extractPoseFeatures(
@@ -897,6 +1351,9 @@ class ViewController: UIViewController {
         }
 
         var f = PoseFeatureVector()
+        // Apply the user's slider setting to this frame's feature vector.
+        f.confidenceThreshold = jointConfidenceThreshold
+
         // Head region — used for label positioning, not biometric ID
         f.nose          = joint(.nose)
         f.leftEye       = joint(.leftEye)
@@ -924,58 +1381,44 @@ class ViewController: UIViewController {
     }
 
     // -------------------------------------------------------
-    // MARK: Pose Classification (heuristic + Core ML placeholder)
-    // -------------------------------------------------------
-    // ACTIVITY RECOGNITION FEATURES:
-    //   F1 — Leg extension:   vertical distance hip→ankle
-    //        Large = standing; small = crouching / airborne
-    //   F2 — Knee bend ratio: how far knee is between hip and ankle
-    //        High = straight leg; low = deep bend (squat/lunge)
-    //   F3 — Wrist height:    wrist Y relative to shoulder Y
-    //        Positive = hands raised (overhead press, jump, wave)
-    //
-    // These three features are sufficient to distinguish common
-    // fitness postures (standing, squatting, lunging, overhead).
-    // A real mlmodel trained on labelled reps can replace this.
+    // MARK: Pose Classification
     // -------------------------------------------------------
 
     /// Returns the best-available value for a left/right bilateral feature.
-    /// Tries the left side first; falls back to the right.
     private func computeLRFeature(
         left:  (VNRecognizedPoint?, VNRecognizedPoint?),
         right: (VNRecognizedPoint?, VNRecognizedPoint?),
+        threshold: Float,
         compute: (VNRecognizedPoint, VNRecognizedPoint) -> Float
     ) -> Float {
-        let threshold = PoseFeatureVector.confidenceThreshold
         func valid(_ p: VNRecognizedPoint?) -> VNRecognizedPoint? {
             guard let p = p, p.confidence >= threshold else { return nil }
             return p
         }
-        if let a = valid(left.0), let b = valid(left.1) {
-            return compute(a, b)
-        }
-        if let a = valid(right.0), let b = valid(right.1) {
-            return compute(a, b)
-        }
+        if let a = valid(left.0),  let b = valid(left.1)  { return compute(a, b) }
+        if let a = valid(right.0), let b = valid(right.1) { return compute(a, b) }
         return 0
     }
 
     private func classifyPose(from features: PoseFeatureVector) -> PoseClass {
+        let t = features.confidenceThreshold
 
-        // F1: Leg extension — hip-to-ankle vertical distance
+        // F1: Leg extension — normalised hip-to-ankle vertical distance.
+        //     Large (> 0.28) → standing; small → crouching / airborne.
         let legExt = computeLRFeature(
             left:  (features.leftHip,  features.leftAnkle),
-            right: (features.rightHip, features.rightAnkle)
+            right: (features.rightHip, features.rightAnkle),
+            threshold: t
         ) { h, a in Float(h.location.y - a.location.y) }
 
-        // F2: Knee bend ratio — knee midpoint between hip and ankle
+        // F2: Knee bend ratio — knee position as fraction between hip and ankle.
+        //     High (> 0.38) → straight leg; low → deep squat or lunge.
         let kneeRatio: Float = {
-            let threshold = PoseFeatureVector.confidenceThreshold
             func kbr(hip: VNRecognizedPoint?, knee: VNRecognizedPoint?,
                      ankle: VNRecognizedPoint?) -> Float? {
                 guard let h = hip, let k = knee, let a = ankle,
-                      h.confidence >= threshold, k.confidence >= threshold,
-                      a.confidence >= threshold else { return nil }
+                      h.confidence >= t, k.confidence >= t,
+                      a.confidence >= t else { return nil }
                 let span = Float(h.location.y - a.location.y)
                 guard span > 0.01 else { return nil }
                 return Float(h.location.y - k.location.y) / span
@@ -987,37 +1430,23 @@ class ViewController: UIViewController {
                 ?? 0
         }()
 
-        // F3: Wrist height relative to shoulders (averaged over both sides)
+        // F3: Wrist height relative to shoulders (positive = hands raised).
+        //     Used to detect overhead press, jump reach, or arm raise.
         var wristScore: Float = 0; var wristN = 0
-        let threshold = PoseFeatureVector.confidenceThreshold
         if let lw = features.leftWrist, let ls = features.leftShoulder,
-           lw.confidence >= threshold, ls.confidence >= threshold {
+           lw.confidence >= t, ls.confidence >= t {
             wristScore += Float(lw.location.y - ls.location.y); wristN += 1
         }
         if let rw = features.rightWrist, let rs = features.rightShoulder,
-           rw.confidence >= threshold, rs.confidence >= threshold {
+           rw.confidence >= t, rs.confidence >= t {
             wristScore += Float(rw.location.y - rs.location.y); wristN += 1
         }
         if wristN > 0 { wristScore /= Float(wristN) }
 
-        // ── Decision ─────────────────────────────────────────────────
-        // poseTypeA (Standing / Upright): legs extended, knees mostly straight
-        // poseTypeB (Active / Dynamic):   knees bent, crouching, or arms raised
+        // Decision: poseTypeA = Standing/Upright, poseTypeB = Active/Dynamic
         let isStanding = legExt > 0.28 && kneeRatio > 0.38
         return isStanding ? .poseTypeA : .poseTypeB
     }
-
-    // --------------------------------------------------------
-    // PLACEHOLDER: Core ML classification
-    // --------------------------------------------------------
-    // private func classifyWithCoreML(_ features: PoseFeatureVector) -> PoseClass {
-    //     guard let classifier = poseClassifier else { return .unknown }
-    //     guard let arr = try? features.toMLMultiArray() else { return .unknown }
-    //     let input  = PoseClassifierInput(poses: arr)
-    //     guard let out = try? classifier.prediction(input: input) else { return .unknown }
-    //     return PoseClass(rawValue: out.classLabel) ?? .unknown
-    // }
-    // --------------------------------------------------------
 
     // -------------------------------------------------------
     // MARK: Skeleton Overlay Drawing
@@ -1028,14 +1457,12 @@ class ViewController: UIViewController {
     }
 
     private func drawSkeleton(from features: PoseFeatureVector) {
-        // Use the cached size (updated in viewDidLayoutSubviews) to avoid
-        // a main.sync call on the visionQueue hot path.
         let layerSize = cachedLayerSize
         guard layerSize.width > 0, layerSize.height > 0 else { return }
 
-        let threshold = PoseFeatureVector.confidenceThreshold
+        let t = features.confidenceThreshold
         func viewPt(_ j: VNRecognizedPoint?) -> CGPoint? {
-            guard let j = j, j.confidence >= threshold else { return nil }
+            guard let j = j, j.confidence >= t else { return nil }
             return visionToViewPoint(j.location, in: layerSize)
         }
 
@@ -1067,7 +1494,6 @@ class ViewController: UIViewController {
             bonePath.move(to: from); bonePath.addLine(to: to)
         }
 
-        // Compute valid joints once and reuse for joint dots.
         let joints = features.validJoints
         let jointPath = UIBezierPath()
         let r: CGFloat = 5.0
@@ -1095,55 +1521,33 @@ class ViewController: UIViewController {
     // MARK: Helpers
     // -------------------------------------------------------
 
-    /// Resets to the unknown state and clears the skeleton overlay.
-    /// Centralises the repeated pattern used across processPixelBuffer.
     private func resetToUnknown() {
         updatePoseLabel(with: .unknown)
         clearSkeletonOverlay()
     }
 
-    // -------------------------------------------------------
-    // MARK: UI / Label Updates
-    // -------------------------------------------------------
-
     private func updatePoseLabel(with pose: PoseClass) {
         guard pose != currentPose else { return }
         currentPose = pose
         DispatchQueue.main.async { [weak self] in
-            self?.poseLabel.text = pose.rawValue
+            guard let self = self, !self.isPaused else { return }
+            self.poseLabel.text = pose.rawValue
         }
     }
 
     // -------------------------------------------------------
     // MARK: 3-D AR Text Overlay — Node Management
     // -------------------------------------------------------
-    // ETHICAL NOTE — SINGLE-USER LABEL:
-    // Only one SCNText node exists at any time.  It is attached to the
-    // single accepted anchor node (body or face).  If no anchor is
-    // available yet the node floats at a fixed position in front of
-    // the camera and is re-parented once an anchor arrives.
-    // -------------------------------------------------------
 
-    /// Creates a default floating SCNText node at a fixed position.
-    /// Used only when body tracking is unavailable (face / world mode).
     private func addDefaultPoseTextNode() {
         let (container, textNode) = makePoseTextNodes(
             initialText: PoseClass.unknown.rawValue)
-
-        // Place 30 cm in front of camera, 10 cm above centre.
         container.position = SCNVector3(x: -0.05, y: 0.1, z: -0.3)
-
         arView.scene.rootNode.addChildNode(container)
         poseTextContainerNode = container
         poseTextNode          = textNode
     }
 
-    /// Factory that creates a container node with a billboard constraint
-    /// and a child SCNText node.
-    ///
-    /// The billboard constraint ensures the text always faces the camera
-    /// regardless of the parent anchor's orientation — essential for
-    /// readability when the user rotates.
     private func makePoseTextNodes(
         initialText: String
     ) -> (container: SCNNode, textNode: SCNNode) {
@@ -1152,7 +1556,6 @@ class ViewController: UIViewController {
         geometry.font                            = UIFont.boldSystemFont(ofSize: 6)
         geometry.firstMaterial?.diffuse.contents  = UIColor.cyan
         geometry.flatness                         = 0.1
-        // Centre the text at the node origin so it aligns above the head.
         let (min, max) = geometry.boundingBox
         let dx = (max.x - min.x) / 2
         let dy = (max.y - min.y) / 2
@@ -1164,19 +1567,17 @@ class ViewController: UIViewController {
 
         let container = SCNNode()
         container.name = "poseTextContainer"
-        // Billboard: always face the camera on all axes.
-        let billboard = SCNBillboardConstraint()
-        billboard.freeAxes = .all
+        let billboard  = SCNBillboardConstraint()
+        billboard.freeAxes  = .all
         container.constraints = [billboard]
         container.addChildNode(textNode)
 
         return (container, textNode)
     }
 
-    /// Removes and nils both the container and text nodes.
     private func removePoseTextNode() {
         poseTextContainerNode?.removeFromParentNode()
-        poseTextContainerNode = nil
+        poseTextContainerNode  = nil
         poseTextNode?.removeFromParentNode()
         poseTextNode           = nil
         lastRenderedTextString = ""
@@ -1185,47 +1586,24 @@ class ViewController: UIViewController {
     // -------------------------------------------------------
     // MARK: AR Label Positioning — ARBodyAnchor (head joint)
     // -------------------------------------------------------
-    // When ARBodyTrackingConfiguration is active, ARKit provides an
-    // ARBodyAnchor whose skeleton includes a "head_joint".  We read
-    // the head joint's model-space transform and offset +0.2 m in Y
-    // to position the label above the user's head in 3-D space.
-    //
-    // ETHICAL — SINGLE-ANCHOR LIMIT:
-    // `trackedAnchorID` records the UUID of the FIRST body anchor
-    // added.  All subsequent body anchors are rejected in
-    // renderer(_:didAdd:for:) to prevent tracking a non-consenting
-    // bystander.
-    // -------------------------------------------------------
 
-    /// String constant for the ARKit head joint.
-    /// Using a string literal for iOS 13 compatibility
-    /// (ARSkeleton.JointName.head requires iOS 14).
     private static let headJointName = "head_joint"
 
-    /// Extracts the head joint's model-space position from an ARBodyAnchor.
-    ///
-    /// The head joint index is cached in `cachedHeadJointIndex` after the
-    /// first lookup, avoiding a linear search on every render frame.
     private func headJointModelPosition(
         from bodyAnchor: ARBodyAnchor
     ) -> simd_float3? {
         let skeleton   = bodyAnchor.skeleton
         let jointNames = skeleton.definition.jointNames
 
-        // Cache the index on first call — it is stable for a session.
         if cachedHeadJointIndex == nil {
             cachedHeadJointIndex = jointNames.firstIndex(of: Self.headJointName)
         }
         guard let idx = cachedHeadJointIndex else { return nil }
 
-        let headTransform = skeleton.jointModelTransforms[idx]
-        return simd_float3(headTransform.columns.3.x,
-                           headTransform.columns.3.y,
-                           headTransform.columns.3.z)
+        let t = skeleton.jointModelTransforms[idx]
+        return simd_float3(t.columns.3.x, t.columns.3.y, t.columns.3.z)
     }
 
-    /// Creates and attaches the SCNText label above the head joint of a
-    /// body anchor.  Called once when the first ARBodyAnchor is added.
     private func attachPoseLabel(
         toBodyNode node: SCNNode,
         bodyAnchor: ARBodyAnchor
@@ -1233,13 +1611,11 @@ class ViewController: UIViewController {
         let (container, textNode) = makePoseTextNodes(
             initialText: currentPose.rawValue)
 
-        // Position above the head joint (model space) + 0.2 m Y offset.
         if let headPos = headJointModelPosition(from: bodyAnchor) {
             container.simdPosition = simd_float3(
                 headPos.x, headPos.y + 0.2, headPos.z)
         } else {
-            // Fallback: ~1.8 m above the hip root (average head height).
-            container.simdPosition = simd_float3(0, 1.8 + 0.2, 0)
+            container.simdPosition = simd_float3(0, 2.0, 0)
         }
 
         node.addChildNode(container)
@@ -1247,8 +1623,6 @@ class ViewController: UIViewController {
         poseTextNode          = textNode
     }
 
-    /// Updates the container position to follow the head joint as the
-    /// user moves.  Called from renderer(_:didUpdate:for:) each frame.
     private func updateBodyLabelPosition(bodyAnchor: ARBodyAnchor) {
         guard let container = poseTextContainerNode else { return }
         if let headPos = headJointModelPosition(from: bodyAnchor) {
@@ -1260,41 +1634,24 @@ class ViewController: UIViewController {
     // -------------------------------------------------------
     // MARK: AR Label Positioning — HitTest from 2D Vision
     // -------------------------------------------------------
-    // When neither ARBodyAnchor nor ARFaceAnchor is available (world-
-    // tracking fallback) we project the Vision nose point through an
-    // ARKit hitTest to estimate a 3-D world position for the label.
-    //
-    // The hitTest looks for existing feature points in the scene.
-    // This is a best-effort approach; on a featureless background the
-    // label stays at its last known position.
-    // -------------------------------------------------------
 
     private func positionLabelViaHitTest(features: PoseFeatureVector) {
         guard let container = poseTextContainerNode else { return }
-        let threshold = PoseFeatureVector.confidenceThreshold
-
         guard let nose = features.nose,
-              nose.confidence >= threshold else { return }
+              nose.confidence >= features.confidenceThreshold else { return }
 
-        // Capture the layer size computed on the main thread (cached in
-        // cachedLayerSize) — avoids a main.sync inside visionQueue.
         let size = cachedLayerSize
         guard size.width > 0 else { return }
 
-        // Convert Vision coordinates (y-up, normalised) to screen space.
         let screenPt = CGPoint(
             x: nose.location.x * size.width,
             y: (1.0 - nose.location.y) * size.height)
 
-        // hitTest against existing feature points (available on all
-        // ARKit configurations).
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             let hits = self.arView.hitTest(screenPt, types: .featurePoint)
-
             if let hit = hits.first {
                 let col3 = hit.worldTransform.columns.3
-                // Position the label 0.2 m above the hit point.
                 container.simdWorldPosition = simd_float3(
                     col3.x, col3.y + 0.2, col3.z)
             }
@@ -1306,26 +1663,14 @@ class ViewController: UIViewController {
 
 extension ViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
-    /// Receives each video frame on `visionQueue`.
-    ///
-    /// ETHICAL: The CMSampleBuffer is passed into the shared
-    /// processPixelBuffer pipeline, which enforces consent + active-scan
-    /// gates before extracting any pixel data.
-    ///
-    /// This delegate is ONLY active when body tracking is unavailable
-    /// (face / world mode).  When ARBodyTrackingConfiguration is active,
-    /// the AVCaptureSession is never started and this method never fires.
     func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            return
-        }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ts = CMTimeGetSeconds(
             CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
-        // Front camera with portrait connection → orientation .up
         processPixelBuffer(pixelBuffer, timestamp: ts, orientation: .up)
     }
 
@@ -1342,21 +1687,10 @@ extension ViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
 extension ViewController: ARSessionDelegate {
 
-    /// Called by ARKit every frame when the session updates.
-    ///
-    /// When `usesBodyTracking` is true, this is the sole entry point for
-    /// camera frames: we process `frame.capturedImage` for Vision body-pose
-    /// detection directly, avoiding a separate AVCaptureSession.
-    ///
-    /// ETHICAL: The pixel buffer belongs to the ARFrame and is released
-    /// when the frame is released.  We NEVER retain, copy, or store it.
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard usesBodyTracking else { return }
         guard userHasConsented, isScanning else { return }
-
-        // Process on visionQueue to keep the main / render threads clear.
         visionQueue.async { [weak self] in
-            // Rear camera in portrait → Vision orientation .right
             self?.processPixelBuffer(
                 frame.capturedImage,
                 timestamp: frame.timestamp,
@@ -1369,63 +1703,36 @@ extension ViewController: ARSessionDelegate {
 
 extension ViewController: ARSCNViewDelegate {
 
-    // -------------------------------------------------------
-    // renderer(_:didAdd:for:) — Anchor Addition
-    // -------------------------------------------------------
-    // ETHICAL — SINGLE-ANCHOR ENFORCEMENT:
-    // This is where the single-user / single-anchor constraint is
-    // enforced.  The very first ARBodyAnchor or ARFaceAnchor that
-    // ARKit reports is accepted and its UUID stored.  All subsequent
-    // anchors of the same type are REFUSED.  This prevents the app
-    // from tracking a second person who has NOT consented.
-    //
-    // The constraint is deliberately conservative: even if the second
-    // anchor could theoretically be the same person re-detected, we
-    // refuse it rather than risk analysing someone else.
-    // -------------------------------------------------------
-
     func renderer(
         _ renderer: SCNSceneRenderer,
         didAdd node: SCNNode,
         for anchor: ARAnchor
     ) {
-        // ── Gate: consent ─────────────────────────────────────────────
         guard userHasConsented, isScanning else { return }
 
-        // ── ARBodyAnchor (body-tracking mode) ─────────────────────────
         if let bodyAnchor = anchor as? ARBodyAnchor {
-            // ETHICAL — SINGLE ANCHOR: refuse a second body.
             guard trackedAnchorID == nil else {
-                print("[SelfPoseDemo] Second body anchor REFUSED "
-                    + "(single-user ethical constraint).")
+                print("[SelfPoseDemo] Second body anchor REFUSED (single-user constraint).")
                 return
             }
             trackedAnchorID = bodyAnchor.identifier
-
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                // Remove any existing text nodes before creating new ones.
                 self.removePoseTextNode()
-                self.attachPoseLabel(
-                    toBodyNode: node, bodyAnchor: bodyAnchor)
+                self.attachPoseLabel(toBodyNode: node, bodyAnchor: bodyAnchor)
             }
             return
         }
 
-        // ── ARFaceAnchor (face-tracking mode) ─────────────────────────
         if anchor is ARFaceAnchor {
-            // ETHICAL — SINGLE ANCHOR: refuse a second face.
             guard trackedAnchorID == nil else {
                 print("[SelfPoseDemo] Second face anchor REFUSED.")
                 return
             }
             trackedAnchorID = anchor.identifier
-
             DispatchQueue.main.async { [weak self] in
                 guard let self = self,
                       let container = self.poseTextContainerNode else { return }
-                // Re-parent the existing floating label under the face node
-                // so it tracks the user's head automatically.
                 container.removeFromParentNode()
                 container.position = SCNVector3(x: 0, y: 0.2, z: 0)
                 node.addChildNode(container)
@@ -1434,69 +1741,33 @@ extension ViewController: ARSCNViewDelegate {
         }
     }
 
-    // -------------------------------------------------------
-    // renderer(_:didUpdate:for:) — Anchor Updates
-    // -------------------------------------------------------
-    // ETHICAL: Only updates for the single accepted anchor are
-    // processed.  The `trackedAnchorID` guard ensures that even
-    // if ARKit somehow delivers updates for an anchor we refused,
-    // we ignore them.
-    // -------------------------------------------------------
-
     func renderer(
         _ renderer: SCNSceneRenderer,
         didUpdate node: SCNNode,
         for anchor: ARAnchor
     ) {
-        guard userHasConsented, isScanning else { return }
+        guard userHasConsented, isScanning, !isPaused else { return }
 
         if let bodyAnchor = anchor as? ARBodyAnchor,
            bodyAnchor.identifier == trackedAnchorID {
-            // Update the text label position to follow the head joint
-            // as the user moves.  This runs on the SceneKit render thread,
-            // which is safe for SCNNode property updates.
             updateBodyLabelPosition(bodyAnchor: bodyAnchor)
         }
-        // ARFaceAnchor: no manual update needed — the text container is
-        // a child of the face node, so ARKit moves it automatically.
     }
-
-    // -------------------------------------------------------
-    // renderer(_:updateAtTime:) — Per-Frame Render Update
-    // -------------------------------------------------------
-    // Called by SceneKit before each render frame on the render thread.
-    // We use it to synchronise the SCNText geometry string with the
-    // latest `currentPose` value.
-    //
-    // Thread safety note:
-    //   `currentPose` is written on `visionQueue` and read here on the
-    //   SceneKit render thread.  For a display-only enum this is safe on
-    //   ARM64 (word-sized reads are atomic).  The worst case is a one-
-    //   frame stale label, which is acceptable for real-time feedback.
-    // -------------------------------------------------------
 
     func renderer(
         _ renderer: SCNSceneRenderer,
         updateAtTime time: TimeInterval
     ) {
-        guard userHasConsented, isScanning else { return }
+        guard userHasConsented, isScanning, !isPaused else { return }
 
         let displayText = currentPose.rawValue
-
-        // Avoid redundant SCNText geometry updates — only write when
-        // the string has actually changed.
         guard displayText != lastRenderedTextString else { return }
         lastRenderedTextString = displayText
 
-        // SCNText.string can be safely mutated from the render thread.
         if let geometry = poseTextNode?.geometry as? SCNText {
             geometry.string = displayText
         }
     }
-
-    // -------------------------------------------------------
-    // session(_:cameraDidChangeTrackingState:)
-    // -------------------------------------------------------
 
     func session(
         _ session: ARSession,
