@@ -24,3 +24,6 @@ torch>=2.0
 
 # --- Android (via Kivy / Buildozer) ---
 # plyer>=2.1           # uncomment for Android: pip install plyer
+
+# --- Self-Pose Demo Streamlit preview ---
+streamlit>=1.35
