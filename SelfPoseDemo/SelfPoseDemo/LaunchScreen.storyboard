@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    LaunchScreen.storyboard
+    Self-Pose Demo
+
+    Displayed by iOS for ~0.5 s while the app binary loads.
+    DESIGN INTENT:
+      • Dark background matches the AR scene that follows — no jarring flash.
+      • App name centred on screen for immediate brand recognition.
+      • Tagline "Personal Fitness · On-Device AI" sets user expectations.
+      • Privacy notice at the bottom reinforces the ethical use position
+        before the user even sees the consent dialog.
+      • No images, animations, or network requests — launch screens must
+        be static (App Store Review Guideline 4.0).
+
+    LEGAL NOTE:
+      The phrase "Requires explicit consent" serves as an early notice
+      consistent with GDPR Art. 13 transparency requirements.  It is not
+      a substitute for the in-app consent dialog.
+-->
+<document
+    type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB"
+    version="3.0"
+    toolsVersion="21507"
+    targetRuntime="AppleCocoa Touch"
+    propertyAccessControl="none"
+    useAutolayout="YES"
+    launchScreen="YES"
+    useTraitCollections="YES"
+    useSafeAreas="YES"
+    colorMatched="YES"
+    initialViewController="LS-vc-001">
+
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21507"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+
+    <scenes>
+        <scene sceneID="LS-sc-001">
+            <objects>
+                <viewController id="LS-vc-001" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="LS-v-001">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask"
+                            widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+
+                            <!-- ── App Name ──────────────────────────────────── -->
+                            <label
+                                opaque="NO"
+                                userInteractionEnabled="NO"
+                                contentMode="left"
+                                horizontalHuggingPriority="251"
+                                verticalHuggingPriority="251"
+                                text="Self-Pose Demo"
+                                textAlignment="center"
+                                lineBreakMode="middleTruncation"
+                                baselineAdjustment="alignBaselines"
+                                adjustsFontSizeToFit="NO"
+                                translatesAutoresizingMaskIntoConstraints="NO"
+                                id="LS-lbl-name">
+                                <rect key="frame" x="0.0" y="366" width="393" height="56"/>
+                                <fontDescription key="fontDescription"
+                                    type="boldSystem" pointSize="38"/>
+                                <!-- White text on dark background — high contrast -->
+                                <color key="textColor"
+                                    red="1" green="1" blue="1" alpha="1"
+                                    colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+
+                            <!-- ── Tagline ────────────────────────────────────── -->
+                            <label
+                                opaque="NO"
+                                userInteractionEnabled="NO"
+                                contentMode="left"
+                                horizontalHuggingPriority="251"
+                                verticalHuggingPriority="251"
+                                text="Personal Fitness · On-Device AI"
+                                textAlignment="center"
+                                lineBreakMode="middleTruncation"
+                                baselineAdjustment="alignBaselines"
+                                adjustsFontSizeToFit="NO"
+                                translatesAutoresizingMaskIntoConstraints="NO"
+                                id="LS-lbl-tag">
+                                <rect key="frame" x="20" y="434" width="353" height="28"/>
+                                <fontDescription key="fontDescription"
+                                    type="system" pointSize="18"/>
+                                <!-- Cyan tint matches the skeleton overlay colour -->
+                                <color key="textColor"
+                                    red="0.196" green="0.843" blue="0.925" alpha="1"
+                                    colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+
+                            <!-- ── Divider ────────────────────────────────────── -->
+                            <view
+                                opaque="NO"
+                                contentMode="scaleToFill"
+                                translatesAutoresizingMaskIntoConstraints="NO"
+                                id="LS-div-001">
+                                <rect key="frame" x="140" y="478" width="113" height="1"/>
+                                <color key="backgroundColor"
+                                    red="1" green="1" blue="1" alpha="0.15"
+                                    colorSpace="custom" customColorSpace="sRGB"/>
+                            </view>
+
+                            <!-- ── Privacy Notice (bottom) ────────────────────── -->
+                            <!--
+                                ETHICAL DESIGN — GDPR Art. 13 transparency:
+                                Early disclosure that consent is required, before
+                                the user reaches the full consent dialog.
+                            -->
+                            <label
+                                opaque="NO"
+                                userInteractionEnabled="NO"
+                                contentMode="left"
+                                horizontalHuggingPriority="251"
+                                verticalHuggingPriority="251"
+                                text="Requires explicit consent · For personal self-analysis only"
+                                textAlignment="center"
+                                lineBreakMode="middleTruncation"
+                                baselineAdjustment="alignBaselines"
+                                adjustsFontSizeToFit="YES"
+                                minimumFontSize="10"
+                                translatesAutoresizingMaskIntoConstraints="NO"
+                                id="LS-lbl-priv">
+                                <rect key="frame" x="16" y="810" width="361" height="18"/>
+                                <fontDescription key="fontDescription"
+                                    type="system" pointSize="13"/>
+                                <color key="textColor"
+                                    red="0.55" green="0.55" blue="0.57" alpha="1"
+                                    colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+
+                        </subviews>
+
+                        <!-- Dark near-black background — avoids white flash on launch -->
+                        <color key="backgroundColor"
+                            red="0.047" green="0.047" blue="0.094" alpha="1"
+                            colorSpace="custom" customColorSpace="sRGB"/>
+
+                        <viewLayoutGuide key="safeAreaLayoutGuide" id="LS-sag-001"/>
+
+                        <constraints>
+                            <!-- App name — centred vertically with slight upward offset -->
+                            <constraint
+                                firstItem="LS-lbl-name" firstAttribute="centerX"
+                                secondItem="LS-v-001"   secondAttribute="centerX"
+                                id="LS-cx-name"/>
+                            <constraint
+                                firstItem="LS-lbl-name" firstAttribute="centerY"
+                                secondItem="LS-v-001"   secondAttribute="centerY"
+                                constant="-30" id="LS-cy-name"/>
+                            <constraint
+                                firstItem="LS-lbl-name" firstAttribute="leading"
+                                secondItem="LS-v-001"   secondAttribute="leading"
+                                constant="20" id="LS-l-name"/>
+                            <constraint
+                                firstItem="LS-lbl-name" firstAttribute="trailing"
+                                secondItem="LS-v-001"   secondAttribute="trailing"
+                                constant="-20" id="LS-tr-name"/>
+
+                            <!-- Tagline — below name -->
+                            <constraint
+                                firstItem="LS-lbl-tag" firstAttribute="top"
+                                secondItem="LS-lbl-name" secondAttribute="bottom"
+                                constant="10" id="LS-top-tag"/>
+                            <constraint
+                                firstItem="LS-lbl-tag" firstAttribute="centerX"
+                                secondItem="LS-v-001"   secondAttribute="centerX"
+                                id="LS-cx-tag"/>
+                            <constraint
+                                firstItem="LS-lbl-tag" firstAttribute="leading"
+                                secondItem="LS-v-001"   secondAttribute="leading"
+                                constant="20" id="LS-l-tag"/>
+                            <constraint
+                                firstItem="LS-lbl-tag" firstAttribute="trailing"
+                                secondItem="LS-v-001"   secondAttribute="trailing"
+                                constant="-20" id="LS-tr-tag"/>
+
+                            <!-- Divider — below tagline -->
+                            <constraint
+                                firstItem="LS-div-001" firstAttribute="top"
+                                secondItem="LS-lbl-tag" secondAttribute="bottom"
+                                constant="16" id="LS-top-div"/>
+                            <constraint
+                                firstItem="LS-div-001" firstAttribute="centerX"
+                                secondItem="LS-v-001"   secondAttribute="centerX"
+                                id="LS-cx-div"/>
+                            <constraint
+                                firstItem="LS-div-001" firstAttribute="width"
+                                constant="120" id="LS-w-div"/>
+
+                            <!-- Privacy notice — pinned to bottom safe area -->
+                            <constraint
+                                firstItem="LS-lbl-priv" firstAttribute="bottom"
+                                secondItem="LS-sag-001"  secondAttribute="bottom"
+                                constant="-16" id="LS-bot-priv"/>
+                            <constraint
+                                firstItem="LS-lbl-priv" firstAttribute="leading"
+                                secondItem="LS-v-001"    secondAttribute="leading"
+                                constant="16" id="LS-l-priv"/>
+                            <constraint
+                                firstItem="LS-lbl-priv" firstAttribute="trailing"
+                                secondItem="LS-v-001"    secondAttribute="trailing"
+                                constant="-16" id="LS-tr-priv"/>
+                        </constraints>
+                    </view>
+                </viewController>
+
+                <placeholder
+                    placeholderIdentifier="IBFirstResponder"
+                    id="LS-fr-001"
+                    userLabel="First Responder"
+                    sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+</document>

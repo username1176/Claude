@@ -15,19 +15,25 @@
 		A1000012 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000012 /* AVFoundation.framework */; };
 		A1000013 /* Vision.framework in Frameworks */       = {isa = PBXBuildFile; fileRef = A2000013 /* Vision.framework */; };
 		A1000014 /* CoreML.framework in Frameworks */       = {isa = PBXBuildFile; fileRef = A2000014 /* CoreML.framework */; };
+		A1000020 /* Assets.xcassets in Resources */         = {isa = PBXBuildFile; fileRef = A2000020 /* Assets.xcassets */; };
+		A1000021 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A2000021 /* LaunchScreen.storyboard */; };
+		A1000022 /* PrivacyInfo.xcprivacy in Resources */   = {isa = PBXBuildFile; fileRef = A2000022 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A2000001 /* AppDelegate.swift */    = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift;    sourceTree = "<group>"; };
-		A2000002 /* SceneDelegate.swift */  = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift;  sourceTree = "<group>"; };
-		A2000003 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		A2000004 /* Info.plist */           = {isa = PBXFileReference; lastKnownFileType = text.plist.xml;   path = Info.plist;           sourceTree = "<group>"; };
-		A2000010 /* ARKit.framework */        = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework;        path = System/Library/Frameworks/ARKit.framework;        sourceTree = SDKROOT; };
-		A2000011 /* SceneKit.framework */     = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework;     path = System/Library/Frameworks/SceneKit.framework;     sourceTree = SDKROOT; };
-		A2000012 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
-		A2000013 /* Vision.framework */       = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework;       path = System/Library/Frameworks/Vision.framework;       sourceTree = SDKROOT; };
-		A2000014 /* CoreML.framework */       = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework;       path = System/Library/Frameworks/CoreML.framework;       sourceTree = SDKROOT; };
-		A3000001 /* SelfPoseDemo.app */       = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SelfPoseDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000001 /* AppDelegate.swift */        = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift;              path = AppDelegate.swift;        sourceTree = "<group>"; };
+		A2000002 /* SceneDelegate.swift */      = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift;              path = SceneDelegate.swift;      sourceTree = "<group>"; };
+		A2000003 /* ViewController.swift */     = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift;              path = ViewController.swift;     sourceTree = "<group>"; };
+		A2000004 /* Info.plist */               = {isa = PBXFileReference; lastKnownFileType = text.plist.xml;                path = Info.plist;               sourceTree = "<group>"; };
+		A2000020 /* Assets.xcassets */          = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog;           path = Assets.xcassets;          sourceTree = "<group>"; };
+		A2000021 /* LaunchScreen.storyboard */  = {isa = PBXFileReference; lastKnownFileType = file.storyboard;               path = LaunchScreen.storyboard;  sourceTree = "<group>"; };
+		A2000022 /* PrivacyInfo.xcprivacy */    = {isa = PBXFileReference; lastKnownFileType = text.plist.xml;                path = PrivacyInfo.xcprivacy;    sourceTree = "<group>"; };
+		A2000010 /* ARKit.framework */          = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework;          path = System/Library/Frameworks/ARKit.framework;          sourceTree = SDKROOT; };
+		A2000011 /* SceneKit.framework */       = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework;       path = System/Library/Frameworks/SceneKit.framework;       sourceTree = SDKROOT; };
+		A2000012 /* AVFoundation.framework */   = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework;   path = System/Library/Frameworks/AVFoundation.framework;   sourceTree = SDKROOT; };
+		A2000013 /* Vision.framework */         = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework;         path = System/Library/Frameworks/Vision.framework;         sourceTree = SDKROOT; };
+		A2000014 /* CoreML.framework */         = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework;         path = System/Library/Frameworks/CoreML.framework;         sourceTree = SDKROOT; };
+		A3000001 /* SelfPoseDemo.app */         = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SelfPoseDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +79,9 @@
 				A2000002 /* SceneDelegate.swift */,
 				A2000003 /* ViewController.swift */,
 				A2000004 /* Info.plist */,
+				A2000020 /* Assets.xcassets */,
+				A2000021 /* LaunchScreen.storyboard */,
+				A2000022 /* PrivacyInfo.xcprivacy */,
 			);
 			path = SelfPoseDemo;
 			sourceTree = "<group>";
@@ -144,6 +153,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000020 /* Assets.xcassets in Resources */,
+				A1000021 /* LaunchScreen.storyboard in Resources */,
+				A1000022 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -7,20 +7,34 @@
     <!-- ============================================================
          PRIVACY USAGE DESCRIPTIONS
          ============================================================
-         These strings are displayed in Apple's system permission
-         dialogs.  They must be honest, specific, and non-coercive
-         per Apple's App Store Review Guidelines §5.1.1 and the
-         Human Interface Guidelines (Privacy).
+         Displayed verbatim in Apple's system permission dialogs.
+         Must be honest, specific, and non-coercive per:
+           • Apple App Store Review Guidelines §5.1.1 (Data Collection)
+           • Apple Human Interface Guidelines — Privacy
+           • GDPR Art. 13 (transparency at point of data collection)
+           • CCPA §1798.100 (right to know before collection)
+           • BIPA 740 ILCS 14/15(b) (written informed notice)
 
-         GDPR / CCPA note:
-           The camera feed is processed on-device only (AVFoundation +
-           Vision + Core ML).  No pixel data is stored or transmitted.
-           These descriptions accurately reflect that minimal processing.
+         This app processes camera data exclusively on-device using
+         AVFoundation + Vision + ARKit + Core ML.  No pixel data,
+         body-pose coordinates, or classification results are stored
+         on disk, uploaded, or shared with any third party.
          ============================================================ -->
 
-    <!-- Shown the FIRST time the OS asks the user for camera access. -->
+    <!--
+        NSCameraUsageDescription
+        ─────────────────────────────────────────────────────────────
+        Shown the FIRST time iOS asks for camera access.  This string
+        is the user's primary informed-consent notice under BIPA and
+        GDPR Article 9 (biometric data).  It must accurately describe:
+          (a) what data is accessed,
+          (b) how it is used,
+          (c) that it stays on-device, and
+          (d) that you are the subject, not a bystander.
+        ─────────────────────────────────────────────────────────────
+    -->
     <key>NSCameraUsageDescription</key>
-    <string>Self-Pose Demo uses your front camera to analyse your own body pose in real time for personal sports feedback. All processing is on-device only. No video, images, or pose data are stored, shared, or transmitted anywhere.</string>
+    <string>Self-Pose Demo uses your camera to analyse YOUR OWN body pose in real time for personal fitness feedback. All processing runs locally on this device using Apple's Vision and ARKit frameworks — no video, images, joint coordinates, or any other data are stored, transmitted, or shared. The camera is active only while you are scanning and only after you have explicitly agreed to participate. You may revoke access at any time in Settings › Privacy &amp; Security › Camera.</string>
 
     <!-- ============================================================
          APP METADATA
@@ -53,6 +67,24 @@
     <key>CFBundleVersion</key>
     <string>1</string>
 
+    <!--
+        Human-readable copyright notice embedded in the bundle.
+        Reinforces the educational / research-only intent.
+    -->
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2025 Self-Pose Demo. Educational and research use only. Not for clinical or commercial deployment. Personal, consenting self-analysis only — not for analysing others.</string>
+
+    <!-- ============================================================
+         LAUNCH SCREEN
+         ============================================================
+         References LaunchScreen.storyboard.  Must be present or the
+         app is ineligible for App Store submission (App Store Review
+         Guideline 4.0 – Design).
+         ============================================================ -->
+
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+
     <!-- ============================================================
          SCENE MANIFEST (UIKit multi-window / SceneDelegate)
          ============================================================ -->
@@ -77,20 +109,35 @@
 
     <!-- ============================================================
          REQUIRED DEVICE CAPABILITIES
-         Prevents installation on hardware that cannot run the app.
+         ─────────────────────────────────────────────────────────────
+         "arkit"              — excludes devices without A9+ chip and
+                                the required motion co-processor.
+         "arm64"              — all A12+ devices use arm64; combining
+                                with iOS 17 deployment target (A12 min)
+                                ensures ARBodyTrackingConfiguration is
+                                hardware-supported at install time.
+         "front-facing-camera"— required for ARFaceTrackingConfiguration
+                                fallback and the AVCaptureSession path.
+
+         ARBodyTrackingConfiguration additionally requires:
+           • Apple A12 Bionic or later (runtime check in code)
+           • iOS 13.0+ (satisfied by iOS 17 deployment target)
+         These hardware requirements are enforced at runtime by
+         ARBodyTrackingConfiguration.isSupported; the app degrades
+         gracefully to face tracking or world tracking on older chips.
          ============================================================ -->
 
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <!-- ARKit world-tracking or face-tracking requires A9 chip or later -->
         <string>arkit</string>
-        <!-- Front-facing camera is required for pose detection -->
+        <string>arm64</string>
         <string>front-facing-camera</string>
     </array>
 
     <!-- ============================================================
          SUPPORTED ORIENTATIONS
-         Portrait only — landscape is not meaningful for self-pose feedback.
+         Portrait only — landscape layout is not meaningful for
+         real-time self-pose feedback viewed in the user's hand.
          ============================================================ -->
 
     <key>UISupportedInterfaceOrientations</key>
@@ -100,13 +147,34 @@
 
     <!-- ============================================================
          APP TRANSPORT SECURITY
-         No network connections are made by this app.
-         Leaving ATS at its default strict settings reinforces the
-         on-device-only data policy.
+         ─────────────────────────────────────────────────────────────
+         No network connections are made.  ATS is left at its secure
+         default (all HTTPS, no exceptions).  This reinforces the
+         on-device-only data policy stated in consent dialogs and
+         satisfies GDPR Art. 25 (data protection by design).
          ============================================================ -->
 
-    <!-- ATS is intentionally left at its secure default (no exceptions).
-         Self-Pose Demo makes no network requests. -->
+    <!-- ATS intentionally left at strict default — no network requests. -->
+
+    <!-- ============================================================
+         APP STORE COMPLIANCE
+         ============================================================ -->
+
+    <!--
+        ITSAppUsesNonExemptEncryption
+        Required by US Bureau of Industry and Security (BIS) export
+        compliance.  "false" = uses only OS-provided encryption
+        (TLS/HTTPS), which is exempt from EAR §740.17.
+    -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <!--
+        UIUserInterfaceStyle
+        Not locked — honours the user's system-wide Dark Mode setting.
+        The AR scene and overlays are designed to be legible in both
+        light and dark appearances.
+    -->
 
 </dict>
 </plist>

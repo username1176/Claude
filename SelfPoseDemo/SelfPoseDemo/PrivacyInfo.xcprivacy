@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
+<!--
+    PrivacyInfo.xcprivacy — Apple Privacy Manifest
+    ══════════════════════════════════════════════════════════════
+    Required for all new App Store submissions since Spring 2024
+    (Apple Developer News, March 2024 — "Required Reasons API").
+
+    SELF-POSE DEMO PRIVACY POSITION:
+      • No data is collected, stored, or transmitted.
+      • No third-party SDKs with privacy manifests are linked.
+      • No "Required Reason" APIs (e.g. UserDefaults, file timestamps,
+        disk space) are used.
+      • NSPrivacyTracking is false — this app performs zero tracking.
+
+    LEGAL BASIS:
+      All body-pose analysis is ephemeral, on-device, and gated
+      behind explicit runtime consent.  This manifest accurately
+      reflects that no privacy-sensitive data leaves the device.
+
+      GDPR  — Regulation (EU) 2016/679, Art. 5(1)(f), 25, 32
+      CCPA  — California Civil Code § 1798.100
+      BIPA  — Illinois 740 ILCS 14/ § 15(a)(b)
+      Apple — WWDC23 "Get started with privacy manifests" (session 10060)
+    ══════════════════════════════════════════════════════════════
+-->
+
+<plist version="1.0">
+<dict>
+
+    <!--
+        NSPrivacyTracking
+        ──────────────────────────────────────────────────────────
+        "false" = this app does not track users across apps or
+        websites for advertising or data-broker purposes.
+        (Apple definition: https://developer.apple.com/app-store/app-privacy-details/#data-use)
+    -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <!--
+        NSPrivacyTrackingDomains
+        ──────────────────────────────────────────────────────────
+        Empty — no network requests are made; no tracking pixels,
+        analytics endpoints, or advertising domains are contacted.
+    -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!--
+        NSPrivacyCollectedDataTypes
+        ──────────────────────────────────────────────────────────
+        Empty — no data is collected.
+
+        Body pose coordinates are processed in-memory on visionQueue
+        and immediately discarded after classification.  The only
+        value that outlives the Vision request is a PoseClass enum
+        case (a two-byte integer), which is never written to disk,
+        transmitted, or associated with any identifier.
+
+        Camera frames (CVPixelBuffer) are never retained, copied,
+        or stored; they are consumed inline by Vision and released
+        with the ARFrame.
+    -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!--
+        NSPrivacyAccessedAPITypes
+        ──────────────────────────────────────────────────────────
+        Empty — none of Apple's "Required Reason" APIs are used:
+
+          UserDefaults     — not used (no persistence by design)
+          File timestamps  — not used
+          Disk space       — not used
+          System boot time — not used
+          Active keyboards — not used
+
+        Camera access is declared separately in Info.plist via
+        NSCameraUsageDescription, which is the correct mechanism
+        for AVFoundation / ARKit camera usage.  It does not appear
+        in this manifest's API-access list.
+    -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array/>
+
+</dict>
+</plist>
