@@ -86,6 +86,41 @@ enum PoseClass: String {
     case unknown   = "Analysing…"
 }
 
+// MARK: - ClassificationResult
+
+/// Carries the output of one classification pass — pose label, simulated or
+/// real model confidence, and a flag indicating whether the result came from
+/// the mock path or a live Core ML model.
+///
+/// RESEARCH / EDUCATION NOTE:
+/// When `isMock` is `true` the confidence value is **synthetically generated**
+/// for demonstration purposes only.  It must NOT be presented to users as a
+/// genuine measurement.  The [DEMO] badge in the UI makes this explicit.
+/// Replace `isMock = false` only when a production-quality .mlmodel trained on
+/// a consented, ethically-sourced dataset is integrated.
+struct ClassificationResult {
+
+    let pose:       PoseClass
+    /// 0.0–1.0. Synthetic when `isMock == true`.
+    let confidence: Float
+    /// `true`  → produced by `mockClassifyPose` (no real ML model loaded)
+    /// `false` → produced by a live Core ML model
+    let isMock:     Bool
+
+    /// Human-readable string for 2-D HUD label and 3-D AR text node.
+    var displayText: String {
+        guard pose != .unknown else { return pose.rawValue }
+        let pct = Int(confidence * 100)
+        return isMock
+            ? "\(pose.rawValue)  \(pct)%  [DEMO]"
+            : "\(pose.rawValue)  \(pct)%"
+    }
+
+    /// Sentinel returned when there is nothing to display.
+    static let unknown = ClassificationResult(
+        pose: .unknown, confidence: 0, isMock: false)
+}
+
 // MARK: - PoseFeatureVector
 
 /// Ephemeral snapshot of all 19 Vision body-pose joint positions for one frame.
@@ -355,6 +390,34 @@ class ViewController: UIViewController {
     private var jointConfidenceThreshold: Float = 0.4
 
     private var poseTextNode: SCNNode?
+
+    // -------------------------------------------------------
+    // MARK: Mock Classifier
+    // -------------------------------------------------------
+    // PURPOSE: Simulates the output of PoseClassifier.mlmodel so the full
+    // UI pipeline (confidence display, [DEMO] badge, AR text) can be
+    // exercised before a real model is integrated.
+    //
+    // ETHICS / RESEARCH NOTE:
+    //   • Mock results must never be presented as genuine AI inferences.
+    //   • The [DEMO] badge in `ClassificationResult.displayText` makes the
+    //     simulated nature visible to every user at all times.
+    //   • `isMockClassifierActive` auto-flips to `false` the moment a real
+    //     PoseClassifier is loaded (see the commented-out CoreML block).
+    //   • For research or educational publications, cite which dataset was
+    //     used to train any replacement model and confirm it was collected
+    //     with informed consent.
+    // -------------------------------------------------------
+
+    /// `true`  → `mockClassifyPose` is used (no real model present).
+    /// `false` → real Core ML model is active (see classifyWithCoreML).
+    /// Flip this to `false` only after adding PoseClassifier.mlmodel.
+    private let isMockClassifierActive: Bool = true
+
+    /// The most recent classification result, updated on visionQueue.
+    /// `displayText` is read from the SceneKit render thread — safe on ARM64
+    /// for a struct this size (single word-sized reads are atomic).
+    private var currentClassification: ClassificationResult = .unknown
 
     // -------------------------------------------------------
     // MARK: View Lifecycle
@@ -663,6 +726,37 @@ class ViewController: UIViewController {
         sensitivityValueLabel.textAlignment = .center
         settingsPanel.addSubview(sensitivityValueLabel)
 
+        // ── Model Status ──────────────────────────────────────────────
+        // Shows whether a real Core ML model is active or whether the app
+        // is running in demo/mock mode.  This satisfies the transparency
+        // principle (GDPR Art. 5(1)(a)): users can always verify the
+        // nature of the inference they are consenting to.
+        let modelStatusHeader = sectionHeader("Classifier Model")
+        settingsPanel.addSubview(modelStatusHeader)
+
+        let modelStatusLabel = UILabel()
+        modelStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        if isMockClassifierActive {
+            modelStatusLabel.text      = "⚠︎  Demo / Mock mode — no real ML model loaded"
+            modelStatusLabel.textColor = UIColor.systemOrange
+        } else {
+            modelStatusLabel.text      = "✓  PoseClassifier.mlmodel (GPU-accelerated)"
+            modelStatusLabel.textColor = UIColor.systemGreen
+        }
+        modelStatusLabel.font          = UIFont.systemFont(ofSize: 13, weight: .medium)
+        modelStatusLabel.numberOfLines = 0
+        settingsPanel.addSubview(modelStatusLabel)
+
+        let modelNoteLabel = UILabel()
+        modelNoteLabel.translatesAutoresizingMaskIntoConstraints = false
+        modelNoteLabel.text          = isMockClassifierActive
+            ? "Results are simulated for UI development. Confidence values are randomly generated and do not reflect real measurements. Replace with a trained model before any research or production use."
+            : "Inference runs on-device via Neural Engine / GPU. For research use, cite the training dataset and confirm ethical data sourcing."
+        modelNoteLabel.font          = UIFont.systemFont(ofSize: 12)
+        modelNoteLabel.textColor     = .secondaryLabel
+        modelNoteLabel.numberOfLines = 0
+        settingsPanel.addSubview(modelNoteLabel)
+
         // ── FPS Badge ─────────────────────────────────────────────────
         fpsBadgeLabel = UILabel()
         fpsBadgeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -763,8 +857,29 @@ class ViewController: UIViewController {
             sensitivityValueLabel.centerXAnchor.constraint(
                 equalTo: settingsPanel.centerXAnchor),
 
+            modelStatusHeader.topAnchor.constraint(
+                equalTo: sensitivityValueLabel.bottomAnchor, constant: 20),
+            modelStatusHeader.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            modelStatusHeader.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
+            modelStatusLabel.topAnchor.constraint(
+                equalTo: modelStatusHeader.bottomAnchor, constant: 4),
+            modelStatusLabel.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            modelStatusLabel.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
+            modelNoteLabel.topAnchor.constraint(
+                equalTo: modelStatusLabel.bottomAnchor, constant: 4),
+            modelNoteLabel.leadingAnchor.constraint(
+                equalTo: settingsPanel.leadingAnchor, constant: 20),
+            modelNoteLabel.trailingAnchor.constraint(
+                equalTo: settingsPanel.trailingAnchor, constant: -20),
+
             fpsBadgeLabel.topAnchor.constraint(
-                equalTo: sensitivityValueLabel.bottomAnchor, constant: 16),
+                equalTo: modelNoteLabel.bottomAnchor, constant: 12),
             fpsBadgeLabel.centerXAnchor.constraint(
                 equalTo: settingsPanel.centerXAnchor),
 
@@ -1022,17 +1137,18 @@ class ViewController: UIViewController {
             setupCaptureSession(cameraPosition: .front)
         }
 
-        isScanning             = true
-        isPaused               = false
-        trackedAnchorID        = nil
-        cachedHeadJointIndex   = nil
-        currentPose            = .unknown
-        lastProcessedTimestamp = 0
-        lastRenderedTextString = ""
-        fpsWindowStart         = 0
-        fpsFramesInWindow      = 0
-        measuredFPS            = 15.0
-        adaptiveSkipToggle     = false
+        isScanning              = true
+        isPaused                = false
+        trackedAnchorID         = nil
+        cachedHeadJointIndex    = nil
+        currentPose             = .unknown
+        currentClassification   = .unknown
+        lastProcessedTimestamp  = 0
+        lastRenderedTextString  = ""
+        fpsWindowStart          = 0
+        fpsFramesInWindow       = 0
+        measuredFPS             = 15.0
+        adaptiveSkipToggle      = false
 
         updateScanningUI()
 
@@ -1047,12 +1163,13 @@ class ViewController: UIViewController {
             visionQueue.async { [weak self] in self?.captureSession.stopRunning() }
         }
 
-        isScanning           = false
-        isPaused             = false
-        currentPose          = .unknown
-        trackedAnchorID      = nil
-        cachedHeadJointIndex = nil
-        usesBodyTracking     = false
+        isScanning            = false
+        isPaused              = false
+        currentPose           = .unknown
+        currentClassification = .unknown
+        trackedAnchorID       = nil
+        cachedHeadJointIndex  = nil
+        usesBodyTracking      = false
 
         DispatchQueue.main.async { [weak self] in
             self?.updateScanningUI()
@@ -1086,14 +1203,19 @@ class ViewController: UIViewController {
                 ? "Paused"
                 : currentPose.rawValue
 
-            // Scanning indicator — pulse when active, freeze when paused
+            // Scanning indicator — pulse when active, freeze when paused.
+            // Append [DEMO] when no real Core ML model is loaded so the user
+            // always knows whether results are simulated.
+            let demoSuffix = isMockClassifierActive ? "  [DEMO]" : ""
             if isPaused {
                 stopScanningIndicatorAnimation()
-                scanningIndicatorLabel.text  = "⏸ Analysis Paused"
+                scanningIndicatorLabel.text      = "⏸ Analysis Paused\(demoSuffix)"
                 scanningIndicatorLabel.textColor = UIColor.systemOrange
             } else {
-                scanningIndicatorLabel.text  = "● Scanning Your Pose…"
-                scanningIndicatorLabel.textColor = UIColor.systemGreen
+                scanningIndicatorLabel.text      = "● Scanning Your Pose…\(demoSuffix)"
+                scanningIndicatorLabel.textColor = isMockClassifierActive
+                    ? UIColor.systemYellow    // yellow = demo/simulated
+                    : UIColor.systemGreen     // green  = real model active
                 startScanningIndicatorAnimation()
             }
             UIView.animate(withDuration: 0.2) {
@@ -1324,13 +1446,13 @@ class ViewController: UIViewController {
         // Low-confidence partial detections show "Analysing…" rather than
         // a potentially misleading classification.
         guard features.detectedJointCount >= 5 else {
-            updatePoseLabel(with: .unknown)
+            updatePoseLabel(with: .unknown)   // ClassificationResult.unknown sentinel
             drawSkeleton(from: features)
             return
         }
 
-        let pose = classifyPose(from: features)
-        updatePoseLabel(with: pose)
+        let result = runClassifier(features: features)
+        updatePoseLabel(with: result)
         drawSkeleton(from: features)
 
         if !usesBodyTracking && trackedAnchorID == nil {
@@ -1400,6 +1522,8 @@ class ViewController: UIViewController {
         return 0
     }
 
+    /// Heuristic pose label from geometric joint features (no ML model needed).
+    /// Returns a `PoseClass` — callers wrap it in a `ClassificationResult`.
     private func classifyPose(from features: PoseFeatureVector) -> PoseClass {
         let t = features.confidenceThreshold
 
@@ -1431,7 +1555,6 @@ class ViewController: UIViewController {
         }()
 
         // F3: Wrist height relative to shoulders (positive = hands raised).
-        //     Used to detect overhead press, jump reach, or arm raise.
         var wristScore: Float = 0; var wristN = 0
         if let lw = features.leftWrist, let ls = features.leftShoulder,
            lw.confidence >= t, ls.confidence >= t {
@@ -1443,10 +1566,112 @@ class ViewController: UIViewController {
         }
         if wristN > 0 { wristScore /= Float(wristN) }
 
-        // Decision: poseTypeA = Standing/Upright, poseTypeB = Active/Dynamic
         let isStanding = legExt > 0.28 && kneeRatio > 0.38
         return isStanding ? .poseTypeA : .poseTypeB
     }
+
+    // -------------------------------------------------------
+    // MARK: Mock Pose Classifier
+    // -------------------------------------------------------
+    // ⚠️  FOR DEMO / RESEARCH PROTOTYPING ONLY ⚠️
+    //
+    // This function simulates the output of PoseClassifier.mlmodel so
+    // developers can exercise the full UI pipeline — confidence display,
+    // [DEMO] badge, and 3-D AR text — before a real model is ready.
+    //
+    // HOW IT WORKS:
+    //   1. Runs the real geometric heuristic (classifyPose) to obtain a
+    //      plausible base label grounded in the actual joint positions.
+    //   2. Adds calibrated random noise:
+    //        • confidence sampled from N(μ, σ) clipped to [0.55, 0.99]
+    //        • label occasionally flipped (10% chance) to mimic model
+    //          uncertainty on ambiguous frames.
+    //   3. Mirrors the confidence-gate rule of a real VNCoreMLRequest:
+    //      if the simulated confidence < 0.80 the result is .unknown.
+    //
+    // ETHICAL / RESEARCH NOTICE:
+    //   • Mock results must NEVER be used in a published study, clinical
+    //     context, or any user-facing product without replacing this with
+    //     a validated model.
+    //   • The [DEMO] tag in ClassificationResult.displayText makes the
+    //     simulated origin transparent to end users at all times.
+    //   • Any training dataset used for a real model must be:
+    //       – Publicly available or collected under informed consent
+    //       – Anonymised (no personally identifiable information)
+    //       – Cited in any resulting research or educational material
+    //
+    // This function is used for:
+    //   • UI development and layout testing
+    //   • Integration testing of the Vision → CoreML → AR pipeline
+    //   • Educational demos showing what the finished app will look like
+    // -------------------------------------------------------
+
+    private func mockClassifyPose(from features: PoseFeatureVector) -> ClassificationResult {
+        // Base label from the geometric heuristic (uses real joint data).
+        let basePose = classifyPose(from: features)
+
+        // Simulated confidence: mean 0.85, std-dev 0.08, clipped to [0.55, 0.99].
+        // Box-Muller transform produces a normally distributed sample.
+        let u1 = Float.random(in: Float.ulpOfOne...1)
+        let u2 = Float.random(in: Float.ulpOfOne...1)
+        let gauss = sqrtf(-2 * logf(u1)) * cosf(2 * .pi * u2)
+        let rawConf = 0.85 + gauss * 0.08
+        let confidence = min(max(rawConf, 0.55), 0.99)
+
+        // Flip label ~10% of the time to mimic model uncertainty.
+        // The probability is deliberately low so the demo feels stable.
+        let flipped = Float.random(in: 0...1) < 0.10
+        let label   = flipped
+            ? (basePose == .poseTypeA ? PoseClass.poseTypeB : .poseTypeA)
+            : basePose
+
+        // Mirror the 0.80 confidence gate from the real CoreML integration.
+        // Frames simulated below threshold surface as .unknown, matching
+        // production behaviour so gate logic is exercised in demo mode.
+        let gatedPose = confidence >= 0.80 ? label : .unknown
+
+        return ClassificationResult(pose: gatedPose, confidence: confidence, isMock: true)
+    }
+
+    // -------------------------------------------------------
+    // MARK: Classifier Dispatch
+    // -------------------------------------------------------
+
+    /// Routes one feature vector through either the mock or the real model.
+    ///
+    /// To switch to a real model:
+    ///   1. Set `isMockClassifierActive = false` (or make it computed based
+    ///      on whether `poseClassifier != nil`).
+    ///   2. Uncomment `classifyWithCoreML` below.
+    private func runClassifier(features: PoseFeatureVector) -> ClassificationResult {
+        if isMockClassifierActive {
+            return mockClassifyPose(from: features)
+        }
+        // Real model path (uncomment after adding PoseClassifier.mlmodel):
+        // return classifyWithCoreML(features)
+        return mockClassifyPose(from: features)  // fallback if flag ever mismatches
+    }
+
+    // --------------------------------------------------------
+    // PLACEHOLDER: Core ML classification (GPU-accelerated)
+    // --------------------------------------------------------
+    // private func classifyWithCoreML(_ features: PoseFeatureVector)
+    //     -> ClassificationResult {
+    //     guard let classifier = poseClassifier,
+    //           let arr = try? features.toMLMultiArray() else {
+    //         return .unknown
+    //     }
+    //     let input = PoseClassifierInput(poses: arr)
+    //     guard let out = try? classifier.prediction(input: input) else {
+    //         return .unknown
+    //     }
+    //     let pose       = PoseClass(rawValue: out.classLabel) ?? .unknown
+    //     let confidence = Float(out.classProbability[out.classLabel] ?? 0)
+    //     // Apply the same 0.80 gate as the mock path for consistent behaviour.
+    //     let gated = confidence >= 0.80 ? pose : .unknown
+    //     return ClassificationResult(pose: gated, confidence: confidence, isMock: false)
+    // }
+    // --------------------------------------------------------
 
     // -------------------------------------------------------
     // MARK: Skeleton Overlay Drawing
@@ -1522,16 +1747,17 @@ class ViewController: UIViewController {
     // -------------------------------------------------------
 
     private func resetToUnknown() {
-        updatePoseLabel(with: .unknown)
+        updatePoseLabel(with: .unknown)   // uses ClassificationResult.unknown sentinel
         clearSkeletonOverlay()
     }
 
-    private func updatePoseLabel(with pose: PoseClass) {
-        guard pose != currentPose else { return }
-        currentPose = pose
+    private func updatePoseLabel(with result: ClassificationResult) {
+        guard result.pose != currentPose else { return }
+        currentPose           = result.pose
+        currentClassification = result
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isPaused else { return }
-            self.poseLabel.text = pose.rawValue
+            self.poseLabel.text = result.displayText
         }
     }
 
@@ -1760,7 +1986,9 @@ extension ViewController: ARSCNViewDelegate {
     ) {
         guard userHasConsented, isScanning, !isPaused else { return }
 
-        let displayText = currentPose.rawValue
+        // Use ClassificationResult.displayText so the AR label exactly mirrors
+        // the 2-D HUD, including the confidence percentage and [DEMO] badge.
+        let displayText = currentClassification.displayText
         guard displayText != lastRenderedTextString else { return }
         lastRenderedTextString = displayText
 
