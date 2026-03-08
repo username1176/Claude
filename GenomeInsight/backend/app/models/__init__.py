@@ -29,4 +29,10 @@ from app.models.wgs import (  # noqa: F401
     AncestryAnalysis,
     BlockchainRecord,
 )
+from app.models.healthspan import (  # noqa: F401
+    InnerAgeResult,
+    BiomarkerZone,
+    BiomarkerPrediction,
+    HealthspanReport,
+)
 from app.models.audit import AuditLog  # noqa: F401

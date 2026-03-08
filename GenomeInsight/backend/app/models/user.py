@@ -59,6 +59,18 @@ class User(db.Model):
     blockchain_records = relationship(
         "BlockchainRecord", back_populates="user", cascade="all, delete-orphan"
     )
+    innerage_results = relationship(
+        "InnerAgeResult", back_populates="user", cascade="all, delete-orphan"
+    )
+    biomarker_zones = relationship(
+        "BiomarkerZone", back_populates="user", cascade="all, delete-orphan"
+    )
+    biomarker_predictions = relationship(
+        "BiomarkerPrediction", back_populates="user", cascade="all, delete-orphan"
+    )
+    healthspan_reports = relationship(
+        "HealthspanReport", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

@@ -23,3 +23,10 @@ from app.tasks.wgs_tasks import (  # noqa: F401
     weekly_report_refresh,
     schedule_ancestry_reanalysis,
 )
+from app.tasks.healthspan_tasks import (  # noqa: F401
+    run_innerage_calculation,
+    run_biomarker_predictions,
+    generate_weekly_healthspan_report,
+    schedule_healthspan_reports,
+    schedule_all_predictions,
+)

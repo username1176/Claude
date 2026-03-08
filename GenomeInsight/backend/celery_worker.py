@@ -66,6 +66,16 @@ celery.conf.update(
             "schedule": crontab(minute=0, hour=6, day_of_week=0),  # Sunday 06:00 UTC
             "options": {"queue": "analysis"},
         },
+        "weekly-healthspan-reports": {
+            "task": "app.tasks.healthspan_tasks.schedule_healthspan_reports",
+            "schedule": crontab(minute=0, hour=7, day_of_week=0),  # Sunday 07:00 UTC
+            "options": {"queue": "analysis"},
+        },
+        "monthly-biomarker-predictions": {
+            "task": "app.tasks.healthspan_tasks.schedule_all_predictions",
+            "schedule": crontab(minute=0, hour=8, day_of_month=1),  # 1st of month 08:00 UTC
+            "options": {"queue": "analysis"},
+        },
     },
     # Route tasks to queues
     task_routes={
@@ -75,6 +85,7 @@ celery.conf.update(
         "app.tasks.blood_tasks.*": {"queue": "analysis"},
         "app.tasks.microbiome_tasks.*": {"queue": "analysis"},
         "app.tasks.wgs_tasks.*": {"queue": "analysis"},
+        "app.tasks.healthspan_tasks.*": {"queue": "analysis"},
     },
     # Default queue for unmatched tasks
     task_default_queue="default",
