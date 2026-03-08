@@ -76,6 +76,11 @@ celery.conf.update(
             "schedule": crontab(minute=0, hour=8, day_of_month=1),  # 1st of month 08:00 UTC
             "options": {"queue": "analysis"},
         },
+        "weekly-premium-report-emails": {
+            "task": "app.tasks.email_tasks.send_weekly_report_emails",
+            "schedule": crontab(minute=30, hour=7, day_of_week=0),  # Sunday 07:30 UTC (after reports)
+            "options": {"queue": "default"},
+        },
     },
     # Route tasks to queues
     task_routes={

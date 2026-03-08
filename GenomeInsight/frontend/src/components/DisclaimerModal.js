@@ -55,6 +55,12 @@ export default function DisclaimerModal() {
           Wearable, blood, epigenetic, and microbiome data are encrypted at rest and used
           solely for cross-domain insights. They are not shared with third parties.
         </Typography>
+        <Typography variant="body2" paragraph sx={{ lineHeight: 1.8, color: "text.secondary" }}>
+          <strong>Premium Features:</strong> InnerAge calculations, biomarker predictions,
+          and AI chatbot responses are statistical estimates based on published research
+          models. They do not constitute medical diagnoses or prognoses. Trend forecasts
+          use your historical data and may not reflect actual future outcomes.
+        </Typography>
         <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: "italic", color: "text.primary" }}>
           Always consult a qualified healthcare provider before making health decisions.
         </Typography>

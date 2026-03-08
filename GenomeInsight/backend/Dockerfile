@@ -2,11 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for cyvcf2, scipy, and other C-extension packages
+# System deps for cyvcf2, scipy, pysam, prophet, and C-extension packages
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libhts-dev zlib1g-dev \
-        gfortran libopenblas-dev && \
+        gcc g++ libhts-dev zlib1g-dev \
+        gfortran libopenblas-dev \
+        libbz2-dev liblzma-dev libcurl4-openssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

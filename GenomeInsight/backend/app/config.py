@@ -85,6 +85,10 @@ class Config:
     # Frontend URL (for Stripe redirects)
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+    # SendGrid email
+    SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+    SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@genomeinsight.app")
+
     # Rate limiting
     RATELIMIT_STORAGE_URI = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 

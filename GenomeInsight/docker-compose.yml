@@ -11,6 +11,17 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost,http://localhost:80
       - MAX_MICROBIOME_FILE_SIZE_MB=200
+      # Stripe (set in .env)
+      # STRIPE_SECRET_KEY=
+      # STRIPE_WEBHOOK_SECRET=
+      # STRIPE_PRICE_BASIC=
+      # STRIPE_PRICE_PREMIUM=
+      # OpenAI (set in .env)
+      # OPENAI_API_KEY=
+      # SendGrid (set in .env)
+      # SENDGRID_API_KEY=
+      # Blockchain (set in .env)
+      # ETH_RPC_URL=
     volumes:
       - backend-data:/app/data
     ports:
@@ -52,7 +63,7 @@ services:
   celery:
     build: ./backend
     container_name: genomeinsight-celery
-    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2 -Q default,analysis,wearables,insights
+    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=4 -Q default,analysis,wearables,insights
     env_file: .env
     environment:
       - FLASK_ENV=production
@@ -67,6 +78,12 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
 
   celery-beat:
     build: ./backend

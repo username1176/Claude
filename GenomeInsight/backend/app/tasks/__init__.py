@@ -30,3 +30,8 @@ from app.tasks.healthspan_tasks import (  # noqa: F401
     schedule_healthspan_reports,
     schedule_all_predictions,
 )
+from app.tasks.email_tasks import (  # noqa: F401
+    send_weekly_report_emails,
+    send_subscription_confirmation,
+    send_prediction_alert,
+)
