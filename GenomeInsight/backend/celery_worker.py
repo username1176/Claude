@@ -56,6 +56,16 @@ celery.conf.update(
             "schedule": crontab(minute=0, hour=4),  # Daily at 04:00 UTC
             "options": {"queue": "analysis"},
         },
+        "weekly-report-refresh": {
+            "task": "app.tasks.wgs_tasks.weekly_report_refresh",
+            "schedule": crontab(minute=0, hour=5, day_of_week=0),  # Sunday 05:00 UTC
+            "options": {"queue": "analysis"},
+        },
+        "weekly-ancestry-reanalysis": {
+            "task": "app.tasks.wgs_tasks.schedule_ancestry_reanalysis",
+            "schedule": crontab(minute=0, hour=6, day_of_week=0),  # Sunday 06:00 UTC
+            "options": {"queue": "analysis"},
+        },
     },
     # Route tasks to queues
     task_routes={
@@ -64,6 +74,7 @@ celery.conf.update(
         "app.tasks.epigenetics_tasks.*": {"queue": "analysis"},
         "app.tasks.blood_tasks.*": {"queue": "analysis"},
         "app.tasks.microbiome_tasks.*": {"queue": "analysis"},
+        "app.tasks.wgs_tasks.*": {"queue": "analysis"},
     },
     # Default queue for unmatched tasks
     task_default_queue="default",

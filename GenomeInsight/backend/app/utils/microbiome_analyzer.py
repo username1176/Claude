@@ -567,6 +567,227 @@ def generate_microbiome_insights(
     return insights
 
 
+# ── Oral microbiome analysis ────────────────────────────────────────────────
+
+# HMP-derived reference ranges for healthy oral microbiome composition
+_ORAL_REFERENCE = {
+    "streptococcus": {"mean": 0.25, "low": 0.10, "high": 0.45},
+    "haemophilus": {"mean": 0.12, "low": 0.05, "high": 0.20},
+    "neisseria": {"mean": 0.10, "low": 0.03, "high": 0.18},
+    "veillonella": {"mean": 0.09, "low": 0.04, "high": 0.15},
+    "prevotella": {"mean": 0.08, "low": 0.02, "high": 0.20},
+    "rothia": {"mean": 0.06, "low": 0.02, "high": 0.12},
+    "fusobacterium": {"mean": 0.05, "low": 0.01, "high": 0.10},
+    "actinomyces": {"mean": 0.04, "low": 0.01, "high": 0.08},
+    "porphyromonas": {"mean": 0.03, "low": 0.005, "high": 0.08},
+    "treponema": {"mean": 0.02, "low": 0.001, "high": 0.06},
+}
+
+# Red complex: strongly associated with periodontal disease
+_PERIODONTAL_PATHOGENS = {
+    "porphyromonas": 0.08,  # Threshold for concern
+    "treponema": 0.06,
+    "tannerella": 0.05,
+    "aggregatibacter": 0.03,
+    "fusobacterium": 0.12,  # Higher threshold—commensal at lower levels
+}
+
+# Caries-associated bacteria
+_CARIES_BACTERIA = {
+    "streptococcus mutans": 0.05,
+    "lactobacillus": 0.03,
+    "scardovia": 0.01,
+    "bifidobacterium dentium": 0.01,
+}
+
+
+def generate_oral_microbiome_insights(
+    taxa: list[ParsedTaxon],
+    diversity: dict,
+    sample_source: str = "oral",
+) -> list[MicrobiomeInsight]:
+    """Generate oral-specific microbiome insights using HMP reference data.
+
+    Analyzes:
+     1. Periodontal pathogen levels (red/orange complex bacteria).
+     2. Caries risk based on Streptococcus mutans and Lactobacillus.
+     3. Oral-systemic health connections (cardiovascular, diabetes).
+     4. Oral diversity relative to HMP healthy ranges.
+     5. Comparison with HMP reference composition.
+    """
+    insights: list[MicrobiomeInsight] = []
+
+    genera = {}
+    species = {}
+    for g in compute_composition(taxa, "genus"):
+        genera[g["name"].lower()] = g["abundance"]
+    for s in compute_composition(taxa, "species"):
+        species[s["name"].lower()] = s["abundance"]
+
+    # ── Periodontal disease risk ────────────────────────────────────────
+    periodontal_flags = []
+    porphy = genera.get("porphyromonas", 0)
+    trepo = genera.get("treponema", 0)
+    tanner = genera.get("tannerella", 0)
+
+    # Red complex check (P. gingivalis + T. denticola + T. forsythia)
+    red_complex_count = sum([
+        1 for val, thresh in [
+            (porphy, _PERIODONTAL_PATHOGENS["porphyromonas"]),
+            (trepo, _PERIODONTAL_PATHOGENS["treponema"]),
+            (tanner, _PERIODONTAL_PATHOGENS["tannerella"]),
+        ] if val > thresh
+    ])
+
+    if red_complex_count >= 2:
+        insights.append(MicrobiomeInsight(
+            title="Elevated periodontal pathogen complex",
+            body=(
+                f"Multiple 'red complex' periodontal pathogens are elevated: "
+                f"Porphyromonas ({porphy * 100:.1f}%), Treponema ({trepo * 100:.1f}%), "
+                f"Tannerella ({tanner * 100:.1f}%). The red complex (P. gingivalis, "
+                "T. denticola, T. forsythia) is strongly associated with chronic "
+                "periodontitis. Professional dental evaluation is recommended."
+            ),
+            category="dysbiosis",
+            confidence="high",
+            data_sources=["microbiome:oral", "hmp:oral_reference"],
+        ))
+    elif porphy > _PERIODONTAL_PATHOGENS["porphyromonas"]:
+        insights.append(MicrobiomeInsight(
+            title="Elevated Porphyromonas (periodontal risk)",
+            body=(
+                f"Porphyromonas abundance ({porphy * 100:.1f}%) exceeds the HMP "
+                f"healthy range (≤{_ORAL_REFERENCE['porphyromonas']['high'] * 100:.1f}%). "
+                "P. gingivalis is a keystone pathogen in periodontal disease and has "
+                "systemic links to cardiovascular disease and Alzheimer's risk."
+            ),
+            category="dysbiosis",
+            confidence="medium",
+            data_sources=["microbiome:Porphyromonas", "hmp:oral_reference"],
+        ))
+
+    # Fusobacterium (orange complex, also linked to colorectal cancer)
+    fuso = genera.get("fusobacterium", 0)
+    if fuso > _PERIODONTAL_PATHOGENS["fusobacterium"]:
+        insights.append(MicrobiomeInsight(
+            title="Elevated Fusobacterium nucleatum",
+            body=(
+                f"Fusobacterium abundance ({fuso * 100:.1f}%) is above the healthy "
+                "oral range. F. nucleatum is an 'orange complex' periodontal pathogen "
+                "and has been linked to colorectal cancer through oral-gut translocation. "
+                "Maintain good oral hygiene and consider dental screening."
+            ),
+            category="dysbiosis",
+            confidence="medium",
+            data_sources=["microbiome:Fusobacterium", "hmp:oral_reference"],
+        ))
+
+    # ── Caries risk ─────────────────────────────────────────────────────
+    s_mutans = species.get("streptococcus mutans", 0) or genera.get("streptococcus", 0) * 0.1
+    lacto = genera.get("lactobacillus", 0)
+
+    if s_mutans > 0.03 or lacto > _CARIES_BACTERIA["lactobacillus"]:
+        risk_factors = []
+        if s_mutans > 0.03:
+            risk_factors.append(f"S. mutans ({s_mutans * 100:.1f}%)")
+        if lacto > _CARIES_BACTERIA["lactobacillus"]:
+            risk_factors.append(f"Lactobacillus ({lacto * 100:.1f}%)")
+
+        insights.append(MicrobiomeInsight(
+            title="Elevated caries-associated bacteria",
+            body=(
+                f"Caries-associated bacteria are elevated: {', '.join(risk_factors)}. "
+                "Streptococcus mutans produces acid that demineralizes tooth enamel, "
+                "while Lactobacillus thrives in low-pH carious lesions. "
+                "Reduce sugar intake, use fluoride rinse, and maintain regular "
+                "dental check-ups."
+            ),
+            category="recommendation",
+            confidence="medium",
+            data_sources=["microbiome:oral_caries", "hmp:oral_reference"],
+        ))
+
+    # ── Oral diversity vs HMP reference ─────────────────────────────────
+    shannon = diversity.get("shannon", 0)
+    if shannon < 3.0:
+        insights.append(MicrobiomeInsight(
+            title="Low oral microbial diversity",
+            body=(
+                f"Your oral Shannon diversity ({shannon:.2f}) is below the HMP healthy "
+                "range (3.0–5.5). Low oral diversity is associated with periodontal "
+                "disease, oral infections, and may reflect antibiotic use or poor "
+                "oral hygiene. Avoid alcohol-based mouthwash (kills commensal bacteria) "
+                "and consider probiotic lozenges."
+            ),
+            category="diversity",
+            confidence="medium",
+            data_sources=["microbiome:oral_diversity", "hmp:oral_reference"],
+        ))
+
+    # ── Oral-systemic connections ───────────────────────────────────────
+    # High Porphyromonas + Fusobacterium → cardiovascular risk
+    if porphy > 0.05 and fuso > 0.08:
+        insights.append(MicrobiomeInsight(
+            title="Oral-cardiovascular risk connection",
+            body=(
+                "Elevated Porphyromonas and Fusobacterium in the oral microbiome "
+                "are associated with increased cardiovascular risk. These bacteria "
+                "can enter the bloodstream through inflamed gums (bacteremia) and "
+                "contribute to atherosclerotic plaque formation. Maintain oral health "
+                "and discuss with your physician if you have cardiovascular risk factors."
+            ),
+            category="recommendation",
+            confidence="low",
+            data_sources=["microbiome:oral_systemic", "hmp:oral_reference"],
+        ))
+
+    # ── HMP composition comparison ──────────────────────────────────────
+    deviations = []
+    for genus, ref in _ORAL_REFERENCE.items():
+        user_val = genera.get(genus, 0)
+        if user_val > ref["high"]:
+            deviations.append(f"{genus.capitalize()} ({user_val * 100:.1f}% vs "
+                              f"HMP range ≤{ref['high'] * 100:.0f}%)")
+        elif user_val < ref["low"] and user_val > 0:
+            deviations.append(f"{genus.capitalize()} ({user_val * 100:.1f}% vs "
+                              f"HMP range ≥{ref['low'] * 100:.0f}%)")
+
+    if deviations:
+        insights.append(MicrobiomeInsight(
+            title="Oral composition deviates from HMP reference",
+            body=(
+                "The following genera deviate from Human Microbiome Project "
+                "healthy oral reference ranges:\n- " +
+                "\n- ".join(deviations[:5]) +
+                "\n\nNote: Individual variation is normal. Significant deviations "
+                "combined with symptoms may warrant professional evaluation."
+            ),
+            category="composition",
+            confidence="low",
+            data_sources=["microbiome:oral_composition", "hmp:oral_reference"],
+        ))
+
+    # ── Streptococcus balance ───────────────────────────────────────────
+    strep = genera.get("streptococcus", 0)
+    if strep > _ORAL_REFERENCE["streptococcus"]["high"]:
+        insights.append(MicrobiomeInsight(
+            title="Streptococcus dominance in oral microbiome",
+            body=(
+                f"Streptococcus abundance ({strep * 100:.1f}%) exceeds the HMP "
+                f"healthy range (≤{_ORAL_REFERENCE['streptococcus']['high'] * 100:.0f}%). "
+                "While some Streptococcus species are beneficial commensals (S. salivarius, "
+                "S. sanguinis), dominance may indicate reduced ecological diversity. "
+                "Ensure adequate hydration and varied diet to support microbiome balance."
+            ),
+            category="composition",
+            confidence="low",
+            data_sources=["microbiome:Streptococcus", "hmp:oral_reference"],
+        ))
+
+    return insights
+
+
 # ── Genome cross-domain correlations ─────────────────────────────────────────
 
 _GENOME_MICROBIOME_RULES: list[dict] = [

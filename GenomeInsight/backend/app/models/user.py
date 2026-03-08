@@ -50,6 +50,15 @@ class User(db.Model):
     microbiome_uploads = relationship(
         "MicrobiomeUpload", back_populates="user", cascade="all, delete-orphan"
     )
+    wgs_uploads = relationship(
+        "WGSUpload", back_populates="user", cascade="all, delete-orphan"
+    )
+    ancestry_analyses = relationship(
+        "AncestryAnalysis", back_populates="user", cascade="all, delete-orphan"
+    )
+    blockchain_records = relationship(
+        "BlockchainRecord", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

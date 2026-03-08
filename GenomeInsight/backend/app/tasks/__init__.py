@@ -18,3 +18,8 @@ from app.tasks.microbiome_tasks import (  # noqa: F401
     schedule_weekly_reanalysis,
     check_and_reanalyze_stale,
 )
+from app.tasks.wgs_tasks import (  # noqa: F401
+    run_wgs_analysis,
+    weekly_report_refresh,
+    schedule_ancestry_reanalysis,
+)

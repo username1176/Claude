@@ -69,6 +69,12 @@ class Config:
     TERRA_DEV_ID = os.environ.get("TERRA_DEV_ID", "")
     TERRA_REDIRECT_URI = os.environ.get("TERRA_REDIRECT_URI", "")
 
+    # Blockchain / Ethereum
+    ETH_RPC_URL = os.environ.get("ETH_RPC_URL", "")
+    HEALTH_NFT_CONTRACT_ADDRESS = os.environ.get("HEALTH_NFT_CONTRACT_ADDRESS", "")
+    ETH_ACCOUNT_ADDRESS = os.environ.get("ETH_ACCOUNT_ADDRESS", "")
+    ETH_CHAIN_ID = int(os.environ.get("ETH_CHAIN_ID", "11155111"))  # Sepolia by default
+
     # Rate limiting
     RATELIMIT_STORAGE_URI = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 

@@ -24,4 +24,9 @@ from app.models.microbiome import (  # noqa: F401
     MicrobiomeAnalysis,
     MicrobiomeTaxon,
 )
+from app.models.wgs import (  # noqa: F401
+    WGSUpload,
+    AncestryAnalysis,
+    BlockchainRecord,
+)
 from app.models.audit import AuditLog  # noqa: F401
