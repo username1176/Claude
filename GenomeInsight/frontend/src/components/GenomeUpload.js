@@ -27,7 +27,7 @@ export default function GenomeUpload() {
     onDrop,
     accept: { "text/plain": [".vcf", ".txt"] },
     maxFiles: 1,
-    maxSize: 500 * 1024 * 1024,
+    maxSize: 400 * 1024 * 1024,
   });
 
   const handleUpload = async () => {
@@ -87,7 +87,7 @@ export default function GenomeUpload() {
                     Drop your genome here
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                    VCF or TXT — up to 500 MB
+                    VCF or TXT — up to 400 MB
                   </Typography>
                 </>
               )}
