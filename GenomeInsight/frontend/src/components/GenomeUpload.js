@@ -25,7 +25,7 @@ export default function GenomeUpload() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "text/plain": [".vcf", ".txt"] },
+    accept: { "text/plain": [".vcf", ".txt"], "application/gzip": [".gz"], "application/x-gzip": [".gz"] },
     maxFiles: 1,
     maxSize: 400 * 1024 * 1024,
   });
@@ -87,7 +87,7 @@ export default function GenomeUpload() {
                     Drop your genome here
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                    VCF or TXT — up to 400 MB
+                    VCF, VCF.GZ, or TXT — up to 400 MB
                   </Typography>
                 </>
               )}

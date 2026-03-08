@@ -16,6 +16,7 @@ from app.services.encryption import decrypt_dek, encrypt_file
 
 # Magic byte signatures for allowed file types
 VCF_MAGIC = b"##fileformat=VCF"
+GZIP_MAGIC = b"\x1f\x8b"
 PDF_MAGIC = b"%PDF"
 
 # Allowed CSV: must be valid UTF-8 text (checked heuristically)
@@ -26,6 +27,22 @@ class UploadValidationError(Exception):
 
 
 def _validate_vcf_header(data: bytes) -> None:
+    # Handle gzip-compressed VCF (.vcf.gz)
+    if data[:2] == GZIP_MAGIC:
+        import gzip
+        try:
+            header = gzip.decompress(data[:4096])
+        except Exception:
+            raise UploadValidationError(
+                "File appears to be gzip-compressed but could not be decompressed."
+            )
+        if not header.startswith(VCF_MAGIC):
+            raise UploadValidationError(
+                "Gzip file does not contain a valid VCF. "
+                "Expected '##fileformat=VCF' header after decompression."
+            )
+        return
+
     if not data.startswith(VCF_MAGIC):
         raise UploadValidationError(
             "File does not appear to be a valid VCF file. "

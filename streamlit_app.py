@@ -121,13 +121,24 @@ def page_upload():
     with col1:
         uploaded = st.file_uploader(
             "Choose a VCF file",
-            type=["vcf", "txt"],
-            help="Standard VCF 4.x format. Files stay in your browser "
-            "session and are never stored on disk.",
+            type=["vcf", "txt", "gz"],
+            help="Standard VCF 4.x format, plain or gzip-compressed (.vcf.gz). "
+            "Files stay in your browser session and are never stored on disk.",
         )
 
         if uploaded is not None:
-            vcf_bytes = uploaded.read()
+            raw_bytes = uploaded.read()
+
+            # Detect gzip-compressed files (magic bytes 1f 8b)
+            if raw_bytes[:2] == b"\x1f\x8b":
+                import gzip
+                try:
+                    vcf_bytes = gzip.decompress(raw_bytes)
+                except Exception:
+                    st.error("Failed to decompress .gz file. Is it a valid gzip archive?")
+                    return
+            else:
+                vcf_bytes = raw_bytes
 
             if not vcf_bytes[:16].startswith(b"##fileformat=VCF"):
                 st.error(
