@@ -71,6 +71,12 @@ class User(db.Model):
     healthspan_reports = relationship(
         "HealthspanReport", back_populates="user", cascade="all, delete-orphan"
     )
+    subscription = relationship(
+        "Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    chat_messages = relationship(
+        "ChatMessage", back_populates="user", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
 
     def set_password(self, password: str) -> None:

@@ -75,6 +75,16 @@ class Config:
     ETH_ACCOUNT_ADDRESS = os.environ.get("ETH_ACCOUNT_ADDRESS", "")
     ETH_CHAIN_ID = int(os.environ.get("ETH_CHAIN_ID", "11155111"))  # Sepolia by default
 
+    # Stripe
+    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+    STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+    STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_PRICE_BASIC = os.environ.get("STRIPE_PRICE_BASIC", "")
+    STRIPE_PRICE_PREMIUM = os.environ.get("STRIPE_PRICE_PREMIUM", "")
+
+    # Frontend URL (for Stripe redirects)
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
     # Rate limiting
     RATELIMIT_STORAGE_URI = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 

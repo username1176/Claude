@@ -55,5 +55,13 @@ Flask-CORS==5.0.0
 oauthlib==3.2.2
 requests-oauthlib==2.0.0
 
+# Stripe payments
+stripe==11.4.1
+
+# AI chatbot (LangChain + OpenAI)
+langchain==0.3.14
+langchain-openai==0.3.0
+openai==1.59.5
+
 # Environment variables
 python-dotenv==1.0.1

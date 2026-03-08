@@ -77,6 +77,8 @@ def create_app(config_name: str | None = None):
     from app.api.analysis import analysis_bp
     from app.api.wgs import wgs_bp
     from app.api.healthspan import healthspan_bp
+    from app.api.subscription import subscription_bp
+    from app.api.chat import chat_bp
 
     flask_app.register_blueprint(auth_bp)
     flask_app.register_blueprint(genome_bp)
@@ -88,6 +90,8 @@ def create_app(config_name: str | None = None):
     flask_app.register_blueprint(analysis_bp)
     flask_app.register_blueprint(wgs_bp)
     flask_app.register_blueprint(healthspan_bp)
+    flask_app.register_blueprint(subscription_bp)
+    flask_app.register_blueprint(chat_bp)
 
     # Create tables (use Alembic migrations in production instead)
     with flask_app.app_context():

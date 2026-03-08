@@ -35,4 +35,5 @@ from app.models.healthspan import (  # noqa: F401
     BiomarkerPrediction,
     HealthspanReport,
 )
+from app.models.subscription import Subscription, ChatMessage  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401

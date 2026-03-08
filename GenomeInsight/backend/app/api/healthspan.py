@@ -14,7 +14,7 @@ from app.models.healthspan import (
     HealthspanReport,
     InnerAgeResult,
 )
-from app.api.decorators import login_required
+from app.api.decorators import login_required, premium_required
 
 healthspan_bp = Blueprint("healthspan", __name__, url_prefix="/api/v1/healthspan")
 
@@ -273,6 +273,7 @@ def list_zones():
 @healthspan_bp.route("/predict-trends", methods=["POST"])
 @limiter.limit("10 per hour")
 @login_required
+@premium_required
 def predict_trends():
     """Forecast biomarker trends using ML time-series models.
 
@@ -351,6 +352,7 @@ def predict_trends():
 
 @healthspan_bp.route("/report/<target_user_id>", methods=["GET"])
 @login_required
+@premium_required
 def get_healthspan_report(target_user_id: str):
     """Get the latest weekly healthspan report for a user.
 
@@ -419,6 +421,7 @@ def get_healthspan_report(target_user_id: str):
 
 @healthspan_bp.route("/reports", methods=["GET"])
 @login_required
+@premium_required
 def list_healthspan_reports():
     """List all healthspan reports for the current user."""
     reports = (

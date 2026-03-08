@@ -1,4 +1,4 @@
-"""Shared API decorators (authentication, etc.)."""
+"""Shared API decorators (authentication, subscription gating, etc.)."""
 
 from functools import wraps
 
@@ -38,6 +38,51 @@ def login_required(f):
             return jsonify({"error": "User not found"}), 401
 
         g.current_user = user
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def _get_subscription():
+    """Retrieve the current user's subscription (lazy import to avoid cycles)."""
+    from app.models.subscription import Subscription
+
+    return Subscription.query.filter_by(user_id=g.current_user.id).first()
+
+
+def premium_required(f):
+    """Require an active premium subscription.
+
+    Must be used AFTER ``@login_required`` so ``g.current_user`` is set.
+    """
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        sub = _get_subscription()
+        if not sub or not sub.is_premium:
+            return jsonify({
+                "error": "Premium subscription required",
+                "upgrade_url": "/api/v1/subscription/create-checkout",
+            }), 403
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def basic_required(f):
+    """Require at least a basic (or premium) subscription.
+
+    Must be used AFTER ``@login_required`` so ``g.current_user`` is set.
+    """
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        sub = _get_subscription()
+        if not sub or not sub.is_basic_or_above:
+            return jsonify({
+                "error": "Basic or Premium subscription required",
+                "upgrade_url": "/api/v1/subscription/create-checkout",
+            }), 403
         return f(*args, **kwargs)
 
     return decorated
