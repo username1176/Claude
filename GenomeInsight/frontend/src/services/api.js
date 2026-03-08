@@ -199,4 +199,63 @@ export const analysisAPI = {
   triggerGenerate: () => api.post("/analysis/daily/generate"),
 };
 
+// ── WGS (Whole Genome Sequencing) ───────────────────────────────────────
+
+export const wgsAPI = {
+  upload: (file, onProgress) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post("/wgs/upload-wgs", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress,
+    });
+  },
+  listUploads: () => api.get("/wgs/uploads"),
+  getAncestryReport: (id) => api.get(`/wgs/ancestry-report/${id}`),
+  listAncestryReports: () => api.get("/wgs/ancestry-reports"),
+  blockchainStore: (uploadId, dataType) =>
+    api.post("/wgs/blockchain-store", { upload_id: uploadId, data_type: dataType }),
+  blockchainListForSale: (recordId, priceEth) =>
+    api.post("/wgs/blockchain-list-for-sale", { record_id: recordId, price_eth: priceEth }),
+  listBlockchainRecords: () => api.get("/wgs/blockchain-records"),
+};
+
+// ── Healthspan & InnerAge ───────────────────────────────────────────────
+
+export const healthspanAPI = {
+  calculateInnerAge: (data) => api.post("/healthspan/calculate-innerage", data),
+  getInnerAgeHistory: () => api.get("/healthspan/innerage-history"),
+  computeOptimizedZones: (data) => api.post("/healthspan/optimized-zones", data),
+  getZones: () => api.get("/healthspan/zones"),
+  predictTrends: (data) => api.post("/healthspan/predict-trends", data),
+  getReport: (userId) => api.get(`/healthspan/report/${userId}`),
+  listReports: () => api.get("/healthspan/reports"),
+};
+
+// ── Subscription & Stripe ───────────────────────────────────────────────
+
+export const subscriptionAPI = {
+  getStatus: () => api.get("/subscription/status"),
+  createCheckout: (tier, successUrl, cancelUrl) =>
+    api.post("/subscription/create-checkout", {
+      tier,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    }),
+  createPortal: (returnUrl) =>
+    api.post("/subscription/create-portal", { return_url: returnUrl }),
+};
+
+// ── AI Chat ─────────────────────────────────────────────────────────────
+
+export const chatAPI = {
+  sendMessage: (message, sessionId) =>
+    api.post("/chat/message", { message, session_id: sessionId }),
+  getHistory: (sessionId) =>
+    api.get("/chat/history", { params: { session_id: sessionId } }),
+  listSessions: () => api.get("/chat/sessions"),
+  deleteSession: (sessionId) =>
+    api.delete("/chat/session", { data: { session_id: sessionId } }),
+};
+
 export default api;

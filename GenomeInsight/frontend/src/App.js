@@ -19,6 +19,12 @@ import DailyInsights from "./components/DailyInsights";
 import Report from "./components/Report";
 import MicrobiomeUpload from "./components/MicrobiomeUpload";
 import UnifiedReport from "./components/UnifiedReport";
+import WGSUpload from "./components/WGSUpload";
+import GenomeBrowser from "./components/GenomeBrowser";
+import InnerAgeDisplay from "./components/InnerAgeDisplay";
+import HealthspanReport from "./components/HealthspanReport";
+import AIChat from "./components/AIChat";
+import SubscriptionPage from "./components/SubscriptionPage";
 
 /* ─── Wabi Sabi Navigation ─────────────────────────────────────────────────── */
 
@@ -28,9 +34,13 @@ const NAV_ITEMS = [
   { path: "/upload-blood", label: "Blood" },
   { path: "/upload-epigenetics", label: "Epigenetics" },
   { path: "/upload-microbiome", label: "Microbiome" },
+  { path: "/upload-wgs", label: "WGS" },
   { path: "/wearables", label: "Wearables" },
+  { path: "/innerage", label: "InnerAge" },
   { path: "/insights", label: "Insights" },
+  { path: "/chat", label: "AI Chat" },
   { path: "/unified-report", label: "Report" },
+  { path: "/subscription", label: "Plan" },
 ];
 
 function NavBar() {
@@ -161,10 +171,17 @@ function AppRoutes() {
         <Route path="/upload-blood" element={<ProtectedRoute><PageTransition><BloodUpload /></PageTransition></ProtectedRoute>} />
         <Route path="/upload-epigenetics" element={<ProtectedRoute><PageTransition><EpigeneticsUpload /></PageTransition></ProtectedRoute>} />
         <Route path="/upload-microbiome" element={<ProtectedRoute><PageTransition><MicrobiomeUpload /></PageTransition></ProtectedRoute>} />
+        <Route path="/upload-wgs" element={<ProtectedRoute><PageTransition><WGSUpload /></PageTransition></ProtectedRoute>} />
         <Route path="/wearables" element={<ProtectedRoute><PageTransition><WearableConnect /></PageTransition></ProtectedRoute>} />
         <Route path="/insights" element={<ProtectedRoute><PageTransition><DailyInsights /></PageTransition></ProtectedRoute>} />
         <Route path="/report/:analysisId" element={<ProtectedRoute><PageTransition><Report /></PageTransition></ProtectedRoute>} />
         <Route path="/unified-report" element={<ProtectedRoute><PageTransition><UnifiedReport /></PageTransition></ProtectedRoute>} />
+        <Route path="/genome-browser" element={<ProtectedRoute><PageTransition><GenomeBrowser /></PageTransition></ProtectedRoute>} />
+        <Route path="/innerage" element={<ProtectedRoute><PageTransition><InnerAgeDisplay /></PageTransition></ProtectedRoute>} />
+        <Route path="/healthspan" element={<ProtectedRoute><PageTransition><HealthspanReport /></PageTransition></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><PageTransition><AIChat /></PageTransition></ProtectedRoute>} />
+        <Route path="/subscription" element={<ProtectedRoute><PageTransition><SubscriptionPage /></PageTransition></ProtectedRoute>} />
+        <Route path="/subscription/success" element={<ProtectedRoute><PageTransition><SubscriptionPage /></PageTransition></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </AnimatePresence>

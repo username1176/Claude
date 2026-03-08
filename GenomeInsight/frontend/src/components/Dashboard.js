@@ -12,7 +12,10 @@ import {
   Tooltip as ReTooltip, ResponsiveContainer, ReferenceLine,
   PieChart, Pie, Cell,
 } from "recharts";
-import { genomeAPI, bloodAPI, epigeneticsAPI, wearablesAPI, insightsAPI, microbiomeAPI } from "../services/api";
+import {
+  genomeAPI, bloodAPI, epigeneticsAPI, wearablesAPI, insightsAPI,
+  microbiomeAPI, healthspanAPI, wgsAPI, subscriptionAPI,
+} from "../services/api";
 import { WABI_CHART_COLORS, staggerChild } from "../theme/wabiSabi";
 
 export default function Dashboard() {
@@ -25,6 +28,11 @@ export default function Dashboard() {
   const [microbiomeUploads, setMicrobiomeUploads] = useState([]);
   const [wearableConnections, setWearableConnections] = useState([]);
   const [dailyInsights, setDailyInsights] = useState([]);
+  const [innerAge, setInnerAge] = useState(null);
+  const [wgsUploads, setWgsUploads] = useState([]);
+  const [ancestryReports, setAncestryReports] = useState([]);
+  const [blockchainRecords, setBlockchainRecords] = useState([]);
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -33,10 +41,15 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [gRes, bRes, eRes, mRes, wRes, iRes] = await Promise.allSettled([
+      const [gRes, bRes, eRes, mRes, wRes, iRes, iaRes, wgsRes, ancRes, bcRes, subRes] = await Promise.allSettled([
         genomeAPI.listUploads(), bloodAPI.listUploads(),
         epigeneticsAPI.listUploads(), microbiomeAPI.listUploads(),
         wearablesAPI.listConnections(), insightsAPI.getDaily(),
+        healthspanAPI.getInnerAgeHistory(),
+        wgsAPI.listUploads(),
+        wgsAPI.listAncestryReports(),
+        wgsAPI.listBlockchainRecords(),
+        subscriptionAPI.getStatus(),
       ]);
       if (gRes.status === "fulfilled") setGenomeUploads(gRes.value.data);
       if (bRes.status === "fulfilled") setBloodUploads(bRes.value.data);
@@ -44,6 +57,14 @@ export default function Dashboard() {
       if (mRes.status === "fulfilled") setMicrobiomeUploads(mRes.value.data || []);
       if (wRes.status === "fulfilled") setWearableConnections(wRes.value.data || []);
       if (iRes.status === "fulfilled") setDailyInsights(iRes.value.data.insights || []);
+      if (iaRes.status === "fulfilled") {
+        const results = iaRes.value.data.results || iaRes.value.data || [];
+        if (results.length > 0) setInnerAge(results[0]);
+      }
+      if (wgsRes.status === "fulfilled") setWgsUploads(wgsRes.value.data.uploads || wgsRes.value.data || []);
+      if (ancRes.status === "fulfilled") setAncestryReports(ancRes.value.data.reports || ancRes.value.data || []);
+      if (bcRes.status === "fulfilled") setBlockchainRecords(bcRes.value.data.records || bcRes.value.data || []);
+      if (subRes.status === "fulfilled") setSubscription(subRes.value.data);
       const bData = bRes.status === "fulfilled" ? bRes.value.data : [];
       if (bData.length > 0) {
         const [tRes, cRes] = await Promise.allSettled([bloodAPI.getTrends(), bloodAPI.analyzeChanges()]);
@@ -118,15 +139,156 @@ export default function Dashboard() {
         ))}
       </Grid>
 
-      {/* Unified Report link */}
+      {/* InnerAge snapshot */}
+      {innerAge && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}>
+          <Paper
+            elevation={0}
+            sx={{ p: 3, mb: 4, cursor: "pointer", "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease" }}
+            onClick={() => navigate("/innerage")}
+          >
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} sm={4}>
+                <Box sx={{ textAlign: "center" }}>
+                  <Typography variant="overline" color="text.secondary" display="block">Biological Age</Typography>
+                  <Typography
+                    variant="h2"
+                    sx={{
+                      fontWeight: 700,
+                      color: innerAge.age_delta < 0 ? "#8B9A7F" : innerAge.age_delta > 3 ? "#B8726D" : "#C4A882",
+                    }}
+                  >
+                    {innerAge.biological_age.toFixed(1)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    vs chronological {innerAge.chronological_age.toFixed(0)}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={8}>
+                <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                  {innerAge.blood_score != null && (
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" display="block">Blood</Typography>
+                      <Typography variant="h6" fontWeight={600}>{innerAge.blood_score.toFixed(1)}</Typography>
+                    </Box>
+                  )}
+                  {innerAge.epigenetic_score != null && (
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" display="block">Epigenetic</Typography>
+                      <Typography variant="h6" fontWeight={600}>{innerAge.epigenetic_score.toFixed(1)}</Typography>
+                    </Box>
+                  )}
+                  {innerAge.wearable_score != null && (
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" display="block">Wearable</Typography>
+                      <Typography variant="h6" fontWeight={600}>{innerAge.wearable_score.toFixed(1)}</Typography>
+                    </Box>
+                  )}
+                  <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+                    <Chip
+                      label={innerAge.age_delta < 0 ? `${Math.abs(innerAge.age_delta).toFixed(1)}y younger` : `${innerAge.age_delta.toFixed(1)}y older`}
+                      size="small"
+                      sx={{
+                        bgcolor: innerAge.age_delta < 0 ? "rgba(139,154,127,0.12)" : "rgba(184,114,109,0.12)",
+                        color: innerAge.age_delta < 0 ? "#576450" : "#8B4F4B",
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
+        </motion.div>
+      )}
+
+      {/* Ancestry & Blockchain row */}
+      {(ancestryReports.length > 0 || blockchainRecords.length > 0) && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.35 }}>
+          <Grid container spacing={2} sx={{ mb: 4 }}>
+            {ancestryReports.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <Paper
+                  elevation={0}
+                  sx={{ p: 3, cursor: "pointer", "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease", height: "100%" }}
+                  onClick={() => navigate("/genome-browser")}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+                    <Typography variant="h6">Ancestry</Typography>
+                    <Chip label={`${ancestryReports.length} report${ancestryReports.length !== 1 ? "s" : ""}`} size="small" variant="outlined" sx={{ borderColor: "rgba(139,154,127,0.3)" }} />
+                  </Box>
+                  {ancestryReports[0]?.ancestry && (
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      {Object.entries(ancestryReports[0].ancestry).slice(0, 4).map(([pop, pct], idx) => (
+                        <Chip
+                          key={pop}
+                          label={`${pop}: ${typeof pct === "number" ? `${(pct * 100).toFixed(0)}%` : pct}`}
+                          size="small"
+                          sx={{
+                            bgcolor: `${WABI_CHART_COLORS[idx % WABI_CHART_COLORS.length]}18`,
+                            color: WABI_CHART_COLORS[idx % WABI_CHART_COLORS.length],
+                            border: `1px solid ${WABI_CHART_COLORS[idx % WABI_CHART_COLORS.length]}30`,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            )}
+            {blockchainRecords.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <Paper elevation={0} sx={{ p: 3, height: "100%" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+                    <Typography variant="h6">Data Ownership</Typography>
+                    <Chip label="Blockchain" size="small" variant="outlined" sx={{ borderColor: "rgba(160,180,194,0.4)", color: "#657F92" }} />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {blockchainRecords.length} record{blockchainRecords.length !== 1 ? "s" : ""} secured on-chain
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                    {blockchainRecords.slice(0, 3).map((r) => (
+                      <Chip
+                        key={r.id}
+                        label={r.data_type || "health-data"}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: 10, borderColor: "rgba(92,75,63,0.1)" }}
+                      />
+                    ))}
+                    {blockchainRecords.length > 3 && (
+                      <Chip label={`+${blockchainRecords.length - 3}`} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </motion.div>
+      )}
+
+      {/* Unified Report + Healthspan links */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.5 }}>
-        <Paper elevation={0} sx={{ p: 3, mb: 4, display: "flex", alignItems: "center", gap: 2, cursor: "pointer", "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease" }} onClick={() => navigate("/unified-report")}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight={600}>Unified Health Report</Typography>
-            <Typography variant="body2" color="text.secondary">Cross-domain correlations across all your health data</Typography>
-          </Box>
-          <Chip label="View" variant="outlined" size="small" sx={{ borderColor: "rgba(139,154,127,0.4)", color: "#8B9A7F" }} />
-        </Paper>
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={0} sx={{ p: 3, display: "flex", alignItems: "center", gap: 2, cursor: "pointer", "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease" }} onClick={() => navigate("/unified-report")}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle1" fontWeight={600}>Unified Health Report</Typography>
+                <Typography variant="body2" color="text.secondary">Cross-domain correlations across all your health data</Typography>
+              </Box>
+              <Chip label="View" variant="outlined" size="small" sx={{ borderColor: "rgba(139,154,127,0.4)", color: "#8B9A7F" }} />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={0} sx={{ p: 3, display: "flex", alignItems: "center", gap: 2, cursor: "pointer", "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease" }} onClick={() => navigate("/healthspan")}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle1" fontWeight={600}>Healthspan Report</Typography>
+                <Typography variant="body2" color="text.secondary">Weekly summaries with sleep, activity, and biomarker insights</Typography>
+              </Box>
+              <Chip label="View" variant="outlined" size="small" sx={{ borderColor: "rgba(160,180,194,0.4)", color: "#A0B4C2" }} />
+            </Paper>
+          </Grid>
+        </Grid>
       </motion.div>
 
       {/* Daily insights preview */}
@@ -170,6 +332,32 @@ export default function Dashboard() {
         </Box>
       )}
 
+      {/* Subscription upsell */}
+      {(!subscription || subscription.tier === "free") && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.7 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3, mb: 4, cursor: "pointer",
+              background: "linear-gradient(135deg, rgba(139,154,127,0.08) 0%, rgba(160,180,194,0.08) 100%)",
+              border: "1px solid rgba(139,154,127,0.15)",
+              "&:hover": { boxShadow: 2 }, transition: "box-shadow 0.4s ease",
+            }}
+            onClick={() => navigate("/subscription")}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle1" fontWeight={600}>Unlock Premium</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  AI Health Chat, InnerAge, predictive biomarker trends, and more
+                </Typography>
+              </Box>
+              <Chip label="Upgrade" size="small" sx={{ bgcolor: "rgba(139,154,127,0.15)", color: "#576450" }} />
+            </Box>
+          </Paper>
+        </motion.div>
+      )}
+
       <div className="wabi-divider" />
 
       {/* Tabs */}
@@ -177,6 +365,7 @@ export default function Dashboard() {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab label="Genome" /><Tab label="Blood" /><Tab label="Trends" />
           <Tab label="Changes" /><Tab label="Epigenetics" /><Tab label="Microbiome" />
+          <Tab label="WGS" />
         </Tabs>
       </Paper>
 
@@ -187,6 +376,7 @@ export default function Dashboard() {
         {tab === 3 && <ChangeAnalysisPanel analysis={changeAnalysis} />}
         {tab === 4 && <HistoryPanel uploads={epiUploads} emptyMsg="No epigenetic data uploaded yet." />}
         {tab === 5 && <MicrobiomePanel uploads={microbiomeUploads} onDelete={handleDeleteMicrobiome} />}
+        {tab === 6 && <WGSPanel uploads={wgsUploads} />}
       </motion.div>
     </Container>
   );
@@ -366,5 +556,37 @@ function MicrobiomePanel({ uploads, onDelete }) {
         ))}
       </div>
     </Box>
+  );
+}
+
+function WGSPanel({ uploads }) {
+  const navigate = useNavigate();
+  if (!uploads?.length) {
+    return <Alert severity="info">No WGS uploads yet. Upload FASTQ or BAM files to begin whole genome analysis.</Alert>;
+  }
+  return (
+    <div className="space-y-3">
+      {uploads.map((u) => (
+        <Card key={u.id} elevation={0}>
+          <CardContent sx={{ display: "flex", alignItems: "center", gap: 2, py: 2 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle1" fontWeight={500} noWrap>{u.original_filename || u.id}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {u.file_format && `${u.file_format.toUpperCase()} · `}
+                {u.file_size_bytes && `${(u.file_size_bytes / (1024 * 1024)).toFixed(1)} MB · `}
+                {u.depth && `${u.depth}x depth · `}
+                {u.uploaded_at && new Date(u.uploaded_at).toLocaleDateString()}
+              </Typography>
+            </Box>
+            <Chip label={u.status} size="small" variant="outlined" />
+            <Tooltip title="Explore Variants">
+              <IconButton size="small" onClick={() => navigate("/genome-browser")} sx={{ color: "text.secondary" }}>
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
